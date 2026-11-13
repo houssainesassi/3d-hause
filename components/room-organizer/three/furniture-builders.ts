@@ -1,0 +1,129 @@
+import { type BuilderContext, type FurnitureBuilder, type ThreeModule, buildFallback } from './builder-utils';
+import { buildToilet, buildBathtub, buildShower } from './builders/builders-bathroom';
+import { buildBed, buildNightstand, buildDresser } from './builders/builders-bedroom';
+import {
+  buildRug, buildPainting, buildVase, buildMirror, buildCurtains,
+  buildWallShelf, buildWallClock, buildCandles, buildBooksStack,
+} from './builders/builders-decor';
+import { buildTV, buildComputer, buildWiFi, buildRouter, buildCCTV, buildSecurityCamera } from './builders/builders-electronics';
+import { buildFridge, buildStove, buildSink, buildCounter } from './builders/builders-kitchen';
+import { buildLamp, buildPendantLight, buildLamppost } from './builders/builders-lighting';
+import {
+  buildFence, buildPool, buildBbq, buildMailbox, buildBirdbath,
+  buildSteppingStone, buildGardenBench, buildPicnicTable, buildPond,
+} from './builders/builders-outdoor';
+import { buildPerson, buildPet } from './builders/builders-people';
+import {
+  buildPlant, buildFlowerpot, buildTree, buildPineTree, buildBush,
+  buildHedge, buildFlowerBed, buildTulips, buildSunflower, buildRoseBush,
+} from './builders/builders-plants';
+import { buildRayenCoffeeTable, buildRayenCornerMain, buildRayenCornerReturn, buildRayenSofaThree } from './builders/builders-rayen-salon';
+import { buildChair, buildArmchair, buildBench, buildSofa } from './builders/builders-seating';
+import { buildBookshelf, buildCabinet } from './builders/builders-storage';
+import { buildDoor, buildWindow, buildStairs } from './builders/builders-structure';
+import { buildTableOrDesk } from './builders/builders-tables';
+import { setBackOpening } from './reveals';
+import type { FurnitureItem } from '../lib/types';
+
+const BUILDERS: Record<string, FurnitureBuilder> = {
+  bed: buildBed,
+  chair: buildChair,
+  'dining-chair': buildChair,
+  armchair: buildArmchair,
+  bench: buildBench,
+  sofa: buildSofa,
+  table: buildTableOrDesk,
+  'dining-table': buildTableOrDesk,
+  'coffee-table': buildTableOrDesk,
+  'side-table': buildTableOrDesk,
+  desk: buildTableOrDesk,
+  bookshelf: buildBookshelf,
+  cabinet: buildCabinet,
+  wardrobe: buildCabinet,
+  dresser: buildDresser,
+  lamp: buildLamp,
+  'floor-lamp': buildLamp,
+  plant: buildPlant,
+  flowerpot: buildFlowerpot,
+  tree: buildTree,
+  tv: buildTV,
+  computer: buildComputer,
+  nightstand: buildNightstand,
+  wifi: buildWiFi,
+  router: buildRouter,
+  cctv: buildCCTV,
+  'security-camera': buildSecurityCamera,
+  fridge: buildFridge,
+  stove: buildStove,
+  dishwasher: buildCabinet,
+  'kitchen-sink': buildSink,
+  'bathroom-sink': buildSink,
+  counter: buildCounter,
+  toilet: buildToilet,
+  bathtub: buildBathtub,
+  shower: buildShower,
+  rug: buildRug,
+  painting: buildPainting,
+  vase: buildVase,
+  mirror: buildMirror,
+  curtains: buildCurtains,
+  'pendant-light': buildPendantLight,
+  'wall-shelf': buildWallShelf,
+  'wall-clock': buildWallClock,
+  candles: buildCandles,
+  books: buildBooksStack,
+  fence: buildFence,
+  pool: buildPool,
+  'pine-tree': buildPineTree,
+  bush: buildBush,
+  hedge: buildHedge,
+  flowerbed: buildFlowerBed,
+  tulips: buildTulips,
+  sunflower: buildSunflower,
+  'rose-bush': buildRoseBush,
+  bbq: buildBbq,
+  mailbox: buildMailbox,
+  birdbath: buildBirdbath,
+  lamppost: buildLamppost,
+  'stepping-stone': buildSteppingStone,
+  'garden-bench': buildGardenBench,
+  'picnic-table': buildPicnicTable,
+  pond: buildPond,
+  person: buildPerson,
+  pet: buildPet,
+  stairs: buildStairs,
+  door: buildDoor,
+  window: buildWindow,
+  'rayen-salon-corner-main': buildRayenCornerMain,
+  'rayen-salon-corner-return': buildRayenCornerReturn,
+  'rayen-salon-sofa3': buildRayenSofaThree,
+  'rayen-salon-table': buildRayenCoffeeTable,
+};
+
+/**
+ * `storeyHeight` is the storey's floor-to-ceiling height; ceiling-hung items
+ * (the pendant light) hang from it, and default to the classic 3 m storey.
+ */
+export function createFurnitureModel(
+  THREE: ThreeModule,
+  item: FurnitureItem,
+  hasCollision: boolean,
+  storeyHeight?: number,
+  /** A door or window's set-back into its reveal (`openingSetback`, #758); 0 elsewhere. */
+  revealSetback = 0
+): ReturnType<FurnitureBuilder> {
+  const ctx: BuilderContext = {
+    THREE,
+    item,
+    hasCollision,
+    baseColor: hasCollision ? 0xff0000 : item.color,
+    opacity: hasCollision ? 0.7 : 1.0,
+    ...(storeyHeight !== undefined ? { storeyHeight } : {}),
+  };
+  // Own keys only: a saved type such as "constructor" would otherwise resolve
+  // an Object.prototype member and crash the editor on every load (#568).
+  const builder = Object.hasOwn(BUILDERS, item.type) ? BUILDERS[item.type] : undefined;
+  const group = (builder ?? buildFallback)(ctx);
+  setBackOpening(group, revealSetback);
+  return group;
+}

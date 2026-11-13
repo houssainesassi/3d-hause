@@ -1,0 +1,1756 @@
+@import "../components/room-organizer/plotcraft/tokens.css";
+@import "../components/room-organizer/panels/showroom.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ================================================================
+   Dark overrides inside frosted-glass sidebar
+   ================================================================ */
+.pc-glass--dark {
+  --background: 215 25% 12%;
+  --foreground: 210 20% 90%;
+  --card: 215 25% 14%;
+  --card-foreground: 210 20% 90%;
+  --popover: 215 25% 14%;
+  --popover-foreground: 210 20% 90%;
+  --muted: 215 20% 20%;
+  --muted-foreground: 215 15% 60%;
+  --border: 215 20% 25%;
+  --input: 215 20% 18%;
+  --ring: 186 100% 69%;
+  --accent: 215 20% 20%;
+  --accent-foreground: 210 20% 90%;
+  --primary: 186 100% 69%;
+  --primary-foreground: 215 25% 10%;
+  --secondary: 215 20% 18%;
+  --secondary-foreground: 210 20% 90%;
+}
+
+/* Native selects (#415): the dropdown list follows the panel's dark theme. */
+.pc-glass--dark select {
+  color-scheme: dark;
+}
+.pc-glass--dark select option {
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+}
+
+/* Cards inside dark glass panels: inherit dark theme */
+.pc-glass--dark .rounded-lg.border.bg-card {
+  background: hsl(215 25% 14%) !important;
+  color: hsl(210 20% 90%) !important;
+  border-color: hsl(215 20% 25%) !important;
+}
+
+/* Sidebar close button: hidden on desktop, visible on mobile */
+.pc-sidebar-close {
+  display: none;
+}
+
+/* ================================================================
+   HUD anchors shared by every breakpoint
+   ================================================================ */
+/* Left HUD column: scrolls instead of growing under the title badge
+   (badge bottom 70px + gap, plus the HUD's own 16px bottom padding). */
+.pc-hud-left {
+  max-height: calc(100vh - 112px);
+}
+/* Touch camera controls: a column hanging below the top-right pills rather
+   than centred on the viewport, where it landed on the HUD (#300). */
+.pc-touch-controls {
+  top: 140px;
+  right: 10px;
+  flex-direction: column;
+  gap: 8px;
+}
+/* The minimap (180px canvas + chrome at right: 16px) shares that corner. */
+.pc-touch-controls[data-minimap] {
+  right: 222px;
+}
+/* Clear of the item popover on the right edge (#419). */
+.pc-item-popover ~ .pc-touch-controls,
+.pc-item-popover ~ .pc-touch-controls[data-minimap] {
+  right: 322px;
+}
+/* The phone dock's ⋯ toggle and 2D/3D switch (mode panel) exist only in
+   the dock. */
+.pc-mode-more {
+  display: none;
+}
+.pc-mode-dock-only {
+  display: none !important;
+}
+/* A column taller than its room scrolls (#426): it takes the wheel over its
+   gaps too, not just over a panel. */
+.pc-hud-left[data-scrollable] {
+  pointer-events: auto;
+  /* Only as wide as its panels: a grid row stretches it across the plan,
+     where it would take the presses meant for the plan. */
+  width: fit-content;
+  justify-self: start;
+}
+/* The build tools stay pinned at its foot while the panels above scroll,
+   casting a shadow up over them while there is more to see. */
+.pc-hud-left[data-scrollable] .pc-build-tools {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+}
+.pc-hud-left[data-more-after] .pc-build-tools {
+  box-shadow: 0 -12px 18px -10px rgba(0, 0, 0, 0.45), var(--pc-shadow-glass);
+}
+/* Not enough height for the column above the mode panel: lay it flat. */
+@media (max-height: 700px) {
+  .pc-touch-controls {
+    flex-direction: row;
+  }
+}
+
+/* ================================================================
+   Responsive: tablet and below (<1100px)
+   ================================================================ */
+@media (max-width: 1100px) {
+  /* Header stats: no room between the title badge and the top-right pills */
+  .pc-header-stats {
+    display: none !important;
+  }
+
+  /* Camera pad: hide — drag/touch orbit and the wheel cover it */
+  .pc-camera-pad {
+    display: none !important;
+  }
+
+  /* Build tools: horizontal icon strip */
+  .pc-build-tools {
+    width: auto !important;
+    max-width: 100% !important;
+    padding: 6px !important;
+  }
+  .pc-build-tools-header {
+    display: none !important;
+  }
+  .pc-build-tools-grid {
+    display: flex !important;
+    overflow-x: auto !important;
+    gap: 3px !important;
+    padding: 4px !important;
+    border-radius: 10px !important;
+    scrollbar-width: none;
+  }
+  .pc-build-tools-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .pc-build-tools-grid .pc-tile {
+    height: 38px !important;
+    width: 38px !important;
+    min-width: 38px !important;
+    padding: 4px !important;
+    border-radius: 8px !important;
+  }
+  .pc-build-tools-label {
+    display: none !important;
+  }
+  /* The wall-paint and room-stamp panels share the scrolling left column;
+     keep the category strip in view beneath them. */
+  .pc-hud-left .pc-build-tools {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+  }
+}
+
+/* ================================================================
+   Responsive: tablet (769–1100px)
+   The three HUD panels need ~1080px side by side. Wrapping them floated
+   the catalog mid-viewport and pushed the tools under the title badge
+   (#299), so the band gets an explicit grid: the tools strip stacked on
+   the catalog, the mode panel beside them, all on the bottom edge.
+   ================================================================ */
+@media (min-width: 769px) and (max-width: 1100px) {
+  .pc-bottom-hud {
+    /* Bounded at the top so the tools row can size itself to what is left
+       above the bottom row instead of a hard-coded offset. */
+    top: 84px;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'tools mode'
+      'catalog mode';
+    align-items: end !important;
+    gap: 8px !important;
+    padding: 10px !important;
+  }
+  .pc-hud-left {
+    grid-area: tools;
+    max-width: 100%;
+    max-height: 100%;
+    min-height: 0;
+    gap: 8px !important;
+  }
+  .pc-bottom-hud .pc-catalog-strip {
+    grid-area: catalog;
+    justify-self: start;
+  }
+  .pc-mode-panel {
+    grid-area: mode;
+  }
+}
+
+/* ================================================================
+   Compact dock: phones in portrait (≤768px wide) and in landscape
+   (≤1100px wide and ≤500px tall). The desktop HUD left a 70px band of
+   scene on a phone (#395) and overflowed a landscape one (#307); here it
+   docks as a slim bar on the bottom edge: the build-tool chips, one
+   scrolling row of catalog tiles, and a one-row mode bar whose secondary
+   actions fold behind ⋯. The top pills shrink to one row. The queries
+   match lib/hud-layout.ts. Every control is at least 40px and every
+   label at least 10px; the safe-area insets keep it clear of a notch.
+   ================================================================ */
+@media (max-width: 768px), (max-width: 1100px) and (max-height: 500px) {
+  /* Top-left: the sidebar toggle alone; the drawer shows the house name. */
+  .pc-lot-badge {
+    top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    left: calc(8px + env(safe-area-inset-left, 0px)) !important;
+    gap: 4px !important;
+  }
+  .pc-lot-badge__name {
+    display: none !important;
+  }
+  .pc-lot-badge > button {
+    padding: 13px !important;
+  }
+
+  /* Top-right: floor and wall pills side by side, wrapping only when a
+     tall building's floor buttons need it. The box hugs the pills and lets
+     taps through around them. */
+  .pc-top-right {
+    top: calc(8px + env(safe-area-inset-top, 0px)) !important;
+    right: calc(8px + env(safe-area-inset-right, 0px)) !important;
+    max-width: calc(100vw - 72px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    flex-direction: row !important;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    pointer-events: none;
+  }
+  .pc-pill-label {
+    display: none !important;
+  }
+  .pc-floor-pill,
+  .pc-wall-pill {
+    padding: 3px !important;
+    gap: 4px !important;
+  }
+  .pc-floor-pill > div,
+  .pc-wall-pill > div {
+    padding: 2px !important;
+  }
+  .pc-floor-pill .pc-tile,
+  .pc-wall-pill .pc-tile {
+    min-width: 40px !important;
+    height: 40px !important;
+    font-size: 11px !important;
+  }
+  .pc-floor-pill .pc-tile {
+    width: 40px !important;
+  }
+  /* "All" (show every floor) is a word, not a digit. */
+  .pc-floor-pill > button.pc-tile:last-child:not([aria-label]) {
+    width: auto !important;
+    padding: 0 10px !important;
+  }
+  .pc-wall-pill .pc-tile {
+    padding: 4px 8px !important;
+  }
+  /* Narrow portrait, and the narrowest landscape, where the touch buttons
+     share the top bar with the pills. */
+  @media (max-width: 400px), (max-width: 640px) and (max-height: 500px) {
+    .pc-wall-pill .pc-tile svg {
+      display: none;
+    }
+  }
+  @media (max-width: 359px) {
+    .pc-top-right {
+      max-width: calc(100vw - 64px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    }
+    .pc-floor-pill,
+    .pc-wall-pill {
+      gap: 2px !important;
+    }
+    .pc-wall-pill .pc-tile {
+      padding: 4px 5px !important;
+      font-size: 10px !important;
+    }
+  }
+  /* The narrowest landscape (iPhone SE): tighter wall tiles keep the
+     touch buttons' strip one row wide. */
+  @media (max-width: 640px) and (max-height: 500px) {
+    .pc-wall-pill .pc-tile {
+      padding: 4px !important;
+    }
+  }
+
+  /* Top-centre chips (selection, distance, wall drawing, zone name) sit
+     under the pills, wherever they end (#308). */
+  .pc-top-chip {
+    top: calc(var(--pc-top-pills-bottom, 56px) + 8px) !important;
+    max-width: calc(100vw - 16px);
+  }
+
+  /* Left column: no scroller here. The wall tool's panels (folded to
+     their headers until tapped, one at a time, #395) share rows above the
+     chip row and scroll on their own, so the chips — and the Walls chip
+     that ends the tool — never scroll away. */
+  .pc-hud-left {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    gap: 4px !important;
+    padding-right: 0 !important;
+    max-height: none;
+    overflow: visible !important;
+  }
+  .pc-hud-left > .pc-glass {
+    width: auto !important;
+    max-width: 100% !important;
+    flex: 1 1 100%;
+  }
+  .pc-hud-left .pc-build-tools {
+    position: static;
+    box-shadow: var(--pc-shadow-glass);
+  }
+  .pc-hud-left > .pc-dock-folded {
+    flex: 1 1 140px;
+    padding: 2px 10px !important;
+  }
+  .pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded) {
+    max-height: 38vh;
+    max-height: 38dvh;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .pc-hud-left > .pc-wall-paint[data-more-after] {
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 36px), transparent);
+  }
+
+  /* Build tools: one row of labelled chips; the label says which category
+     the catalog row shows. */
+  .pc-build-tools {
+    padding: 4px !important;
+  }
+  .pc-build-tools-grid {
+    padding: 0 !important;
+    background: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    gap: 4px !important;
+  }
+  .pc-build-tools-grid .pc-tile {
+    width: 72px !important;
+    min-width: 72px !important;
+    height: 42px !important;
+    padding: 3px 2px !important;
+    gap: 2px !important;
+  }
+  .pc-build-tools-label {
+    display: block !important;
+    font-size: 10px !important;
+    letter-spacing: 0.02em !important;
+  }
+
+  /* Sideways scrollers fade at an edge with more beyond it. */
+  .pc-build-tools-grid,
+  .pc-catalog-row {
+    --pc-fade-start: 0px;
+    --pc-fade-end: 0px;
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--pc-fade-start), #000 calc(100% - var(--pc-fade-end)), transparent);
+    mask-image: linear-gradient(to right, transparent, #000 var(--pc-fade-start), #000 calc(100% - var(--pc-fade-end)), transparent);
+  }
+  .pc-build-tools-grid[data-more-before],
+  .pc-catalog-row[data-more-before] {
+    --pc-fade-start: 32px;
+  }
+  .pc-build-tools-grid[data-more-after],
+  .pc-catalog-row[data-more-after] {
+    --pc-fade-end: 32px;
+  }
+
+  /* Catalog: one scrolling row of named tiles. */
+  .pc-bottom-hud .pc-catalog-strip {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 4px !important;
+  }
+  .pc-catalog-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Mode bar: Undo, Redo, the mode pill and ⋯ in one row. ⋯ opens the
+     furniture value and the other actions above it. It stacks over the
+     chip row, so the View menu it opens is never painted under them. */
+  .pc-mode-panel {
+    width: 100% !important;
+    padding: 4px !important;
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'primary pill more';
+    align-items: center !important;
+    gap: 4px !important;
+    z-index: 3;
+  }
+  .pc-mode-panel[data-more-open] {
+    grid-template-areas:
+      'money money money'
+      'tray tray tray'
+      'primary pill more';
+  }
+  .pc-mode-panel > div:first-child {
+    display: none !important;
+    grid-area: money;
+    text-align: center !important;
+  }
+  .pc-mode-panel[data-more-open] > div:first-child {
+    display: block !important;
+  }
+  /* Under the hard budget (#463e) the funds stay on the bar: greyed tiles
+     need a reason, and touch has no tooltips. The switch follows the label. */
+  .pc-mode-panel[data-hard-budget]:not([data-more-open]) {
+    grid-template-areas:
+      'money money money'
+      'primary pill more';
+  }
+  .pc-mode-panel[data-hard-budget] > div:first-child {
+    display: block !important;
+  }
+  .pc-mode-panel > div:first-child .pc-budget-switch {
+    position: static;
+    vertical-align: middle;
+    margin-left: 10px;
+    min-height: 28px;
+    font-size: 10px;
+  }
+  .pc-mode-panel > div:first-child .pc-money {
+    font-size: 18px !important;
+    display: inline !important;
+  }
+  .pc-mode-panel > div:first-child .pc-hud-header {
+    display: inline !important;
+    margin-left: 6px !important;
+    font-size: 10px !important;
+  }
+  .pc-mode-pill {
+    grid-area: pill;
+    gap: 2px !important;
+    padding: 2px !important;
+  }
+  .pc-mode-pill__cell {
+    min-width: 0;
+    height: 44px;
+    padding: 3px 2px !important;
+  }
+  .pc-mode-pill__cell .pc-mode-label {
+    font-size: 10px !important;
+    letter-spacing: 0.04em;
+  }
+  @media (max-width: 359px) {
+    .pc-mode-pill__cell .pc-mode-label {
+      letter-spacing: 0;
+    }
+  }
+  .pc-mode-actions {
+    display: contents !important;
+  }
+  .pc-mode-actions-primary {
+    grid-area: primary;
+    display: flex !important;
+    gap: 4px;
+  }
+  .pc-mode-actions-more {
+    display: none !important;
+  }
+  .pc-mode-panel[data-more-open] .pc-mode-actions-more {
+    grid-area: tray;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+    gap: 4px;
+  }
+  .pc-mode-actions .pc-tile,
+  .pc-mode-more {
+    width: 42px !important;
+    min-width: 40px !important;
+    height: 44px !important;
+  }
+  .pc-mode-actions-more .pc-tile {
+    width: 100% !important;
+  }
+  .pc-mode-panel[data-more-open] .pc-mode-dock-only {
+    display: flex !important;
+  }
+  .pc-mode-more {
+    grid-area: more;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+  }
+  /* The View menu opens upward from the mode bar: capped to the room
+     above it, it scrolls rather than running off the top. */
+  .pc-view-menu {
+    max-height: calc(var(--pc-mode-top, 100dvh) - var(--pc-top-pills-bottom, 60px) - 16px);
+    overflow-y: auto;
+  }
+
+  /* Touch camera buttons: down the left edge under the sidebar toggle,
+     clear of the minimap and the item sheet on the right. They never run
+     under the dock: when it grows (⋯ tray, an unfolded wall panel, a short
+     screen) the column wraps into a second one beside it. */
+  .pc-touch-controls,
+  .pc-touch-controls[data-minimap],
+  .pc-item-popover ~ .pc-touch-controls,
+  .pc-bottom-hud:has(.pc-wall-paint) ~ .pc-touch-controls {
+    top: calc(64px + env(safe-area-inset-top, 0px));
+    left: calc(8px + env(safe-area-inset-left, 0px));
+    right: auto;
+    display: grid !important;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(auto-fit, 44px);
+    gap: 4px;
+    max-height: calc(var(--pc-dock-top, 100dvh) - 72px - env(safe-area-inset-top, 0px));
+  }
+  .pc-touch-controls .pc-tile {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  /* An unfolded wall panel is for painting or stamping, not drawing: its
+     drawing hint steps aside for the touch buttons squeezed under the pills. */
+  .pc-world:has(.pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)) .pc-wall-hint {
+    display: none !important;
+  }
+  /* Squeezed to one row by a tall dock, they can meet the tool chip under
+     the pills: the buttons win the tap. */
+  .pc-touch-controls {
+    z-index: 32 !important;
+  }
+
+  /* Constrain glass panels */
+  .pc-glass {
+    max-width: calc(100vw - 16px);
+  }
+}
+
+/* The phone item sheet (data-sheet-open; the popover's own query,
+   COMPACT_OVERLAY_QUERY in lib/overlay-queue.ts) needs the
+   room: the catalog and the build tools step aside while it is open, and
+   the mode bar rides above it so Undo and Redo stay in reach. */
+@media (max-width: 768px), (max-height: 500px) {
+  html[data-sheet-open] .pc-bottom-hud .pc-catalog-strip,
+  html[data-sheet-open] .pc-bottom-hud .pc-hud-left {
+    display: none !important;
+  }
+  html[data-sheet-open] .pc-bottom-hud {
+    bottom: var(--pc-sheet-height, 133px) !important;
+  }
+}
+
+/* ================================================================
+   Phones in portrait (≤768px): the dock stacks — chips, catalog row,
+   mode bar — and hugs the bottom edge, so its box is only what it shows
+   (scene framing reads its panels as occluders).
+   ================================================================ */
+@media (max-width: 768px) {
+  .pc-bottom-hud {
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    align-items: stretch !important;
+    padding: 0 calc(6px + env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px)) !important;
+    gap: 4px !important;
+  }
+  .pc-hud-left {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+  .pc-bottom-hud .pc-catalog-strip,
+  .pc-mode-panel {
+    flex-shrink: 0;
+  }
+
+  /* Item popover: bottom sheet */
+  .pc-item-popover {
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 50vh !important;
+    overflow-y: auto !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+
+  /* Sidebar: full screen */
+  .pc-sidebar {
+    width: 100% !important;
+    left: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    border-radius: 0 !important;
+  }
+  .pc-sidebar-close {
+    display: flex !important;
+  }
+}
+
+/* ================================================================
+   Short viewport / landscape phone (height < 500px)
+   Wide-but-short screens (landscape phones, short desktop windows)
+   lack the vertical space for the tall floating chrome — compact it so
+   nothing overflows off the bottom edge.
+   ================================================================ */
+@media (max-height: 500px) {
+  /* Touch orbit/zoom (and the TouchModeToggle) cover this — the vertical
+     camera d-pad just overflows a short viewport. */
+  .pc-camera-pad {
+    display: none !important;
+  }
+  /* Live stats are non-essential here; the budget still shows in the mode
+     panel, and hiding this frees the cramped top band. */
+  .pc-header-stats {
+    display: none !important;
+  }
+  /* The HUD reaches up to the top pills here; the only free strip is the
+     top bar itself, between the title badge and the floor pill. */
+  .pc-touch-controls,
+  .pc-touch-controls[data-minimap] {
+    top: 21px;
+    right: 181px;
+    gap: 4px;
+  }
+  /* Tighter bottom HUD so it doesn't eat the whole short viewport. */
+  .pc-bottom-hud {
+    padding: 6px !important;
+    gap: 6px !important;
+  }
+  /* Build tools collapse to a horizontal scrollable icon strip. */
+  .pc-build-tools {
+    width: auto !important;
+    padding: 6px !important;
+  }
+  .pc-build-tools-header {
+    display: none !important;
+  }
+  .pc-build-tools-grid {
+    display: flex !important;
+    overflow-x: auto !important;
+    gap: 3px !important;
+    padding: 4px !important;
+    scrollbar-width: none;
+  }
+  .pc-build-tools-grid::-webkit-scrollbar {
+    display: none;
+  }
+  .pc-build-tools-grid .pc-tile {
+    height: 36px !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    padding: 4px !important;
+    border-radius: 8px !important;
+  }
+  .pc-build-tools-label {
+    display: none !important;
+  }
+  /* The right-edge item editor can be taller than a short viewport — pin it
+     near the top and let it scroll instead of running off the bottom. */
+  .pc-item-popover {
+    top: 8px !important;
+    max-height: calc(100vh - 16px) !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* ================================================================
+   Landscape phones (≤1100px wide, ≤500px tall): the dock spreads out —
+   the chip row across the top of it, the catalog row and the mode bar
+   side by side beneath. The touch buttons ride in the top bar, beside
+   the sidebar toggle. Comes after the ≤500px rules it refines.
+   ================================================================ */
+@media (max-width: 1100px) and (max-height: 500px) {
+  .pc-bottom-hud {
+    top: auto;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'tools tools'
+      'catalog mode';
+    align-items: end !important;
+    padding: 0 calc(6px + env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) calc(6px + env(safe-area-inset-left, 0px)) !important;
+    gap: 4px 6px !important;
+  }
+  .pc-hud-left {
+    grid-area: tools;
+    min-height: 0;
+    max-width: 100%;
+  }
+  /* Folded wall panels side by side with the chips. */
+  .pc-hud-left > .pc-glass:not(.pc-build-tools) {
+    flex: 1 1 260px;
+  }
+  /* An unfolded wall panel is a narrow column down the left edge, from
+     under the top bar to the bottom, beside the mode bar: the catalog row
+     folds away, the folded panel and the chips stack under it, and the
+     rest of the screen stays scene, where FIT frames the house (it was a
+     panel across most of the width with a strip of scene left over). Not
+     while the ⋯ tray has folded the wall panels away, nor under the item
+     sheet, which hides the column anyway. */
+  html:not([data-sheet-open]) .pc-bottom-hud:has(> .pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)):not(:has(.pc-mode-panel[data-more-open])) {
+    grid-template-columns: min(300px, 42vw) minmax(0, 1fr);
+    grid-template-areas:
+      'tools .'
+      'tools mode';
+  }
+  .pc-bottom-hud:has(> .pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)):not(:has(.pc-mode-panel[data-more-open])) .pc-catalog-strip {
+    display: none !important;
+  }
+  html:not([data-sheet-open]) .pc-bottom-hud:has(> .pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)):not(:has(.pc-mode-panel[data-more-open])) .pc-mode-panel {
+    justify-self: end;
+  }
+  .pc-bottom-hud:not(:has(.pc-mode-panel[data-more-open])) .pc-hud-left:has(> .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)) {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    max-height: calc(100vh - max(var(--pc-top-pills-bottom, 62px), var(--pc-top-slot-bottom, 0px)) - 12px - env(safe-area-inset-bottom, 0px));
+    max-height: calc(100dvh - max(var(--pc-top-pills-bottom, 62px), var(--pc-top-slot-bottom, 0px)) - 12px - env(safe-area-inset-bottom, 0px));
+  }
+  .pc-hud-left:has(> .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)) > .pc-dock-folded {
+    flex: 0 0 auto;
+  }
+  .pc-hud-left:has(> .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)) > .pc-build-tools {
+    flex: 0 0 auto;
+    align-self: flex-start;
+  }
+  .pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded) {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+  /* Its controls wrap to the column. Their sizes are in "Phone panels". */
+  .pc-hud-left .pc-paint-head {
+    flex-wrap: wrap;
+  }
+  .pc-hud-left .pc-paint-row {
+    flex-wrap: wrap;
+  }
+  .pc-hud-left .pc-paint-patterns {
+    grid-template-columns: repeat(3, 1fr) !important;
+  }
+  /* The chip row only as wide as its chips: the scene shows beside it. */
+  .pc-hud-left > .pc-build-tools {
+    flex: 0 1 auto;
+  }
+  /* The landscape sheet takes the right half: the mode bar moves to the
+     left, into the catalog's place, so Undo and Redo stay in reach. */
+  html[data-sheet-open] .pc-mode-panel {
+    grid-area: catalog;
+    justify-self: start;
+    grid-template-columns: auto;
+    grid-template-areas: 'primary';
+  }
+  /* Half a landscape screen holds Undo and Redo, not the whole bar. */
+  html[data-sheet-open] .pc-mode-panel > div:first-child,
+  html[data-sheet-open] .pc-mode-panel .pc-mode-pill,
+  html[data-sheet-open] .pc-mode-panel .pc-mode-actions-more,
+  html[data-sheet-open] .pc-mode-panel .pc-mode-more {
+    display: none !important;
+  }
+  /* No height for both: the ⋯ tray folds the wall panels away. */
+  .pc-bottom-hud:has(.pc-mode-panel[data-more-open]) .pc-hud-left > .pc-glass:not(.pc-build-tools) {
+    display: none !important;
+  }
+  .pc-bottom-hud .pc-catalog-strip {
+    grid-area: catalog;
+    min-width: 0;
+  }
+  .pc-mode-panel {
+    grid-area: mode;
+    width: auto !important;
+    max-width: 380px;
+  }
+  /* Undo the ≤500px icon strip: the dock keeps its labelled chips. */
+  .pc-build-tools-grid .pc-tile {
+    width: 72px !important;
+    min-width: 72px !important;
+    height: 42px !important;
+    padding: 3px 2px !important;
+  }
+  .pc-build-tools-label {
+    display: block !important;
+  }
+
+  /* In the top bar's measured free strip (useTopBarSlot), between the
+     sidebar toggle and the pills, never over the floor buttons; a strip
+     too narrow for the row (a tall building's floor pill) drops it below
+     the pills. */
+  .pc-touch-controls,
+  .pc-touch-controls[data-minimap],
+  .pc-item-popover ~ .pc-touch-controls,
+  .pc-bottom-hud:has(.pc-wall-paint) ~ .pc-touch-controls {
+    top: var(--pc-top-slot-top, calc(8px + env(safe-area-inset-top, 0px)));
+    left: var(--pc-top-slot-start, calc(60px + env(safe-area-inset-left, 0px)));
+    right: auto;
+    display: flex !important;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 4px;
+    max-width: calc(var(--pc-top-slot-end, 100vw) - var(--pc-top-slot-start, 60px));
+    max-height: none;
+  }
+}
+
+/* Short desktop-width windows with touch (≥1101px wide, ≤500px tall): the
+   pills go side by side so the stack clears the mode panel, and the touch
+   buttons sit in the top bar after the title badge rather than under the
+   pills. Desktop at ≥701px tall never gets here. */
+@media (min-width: 1101px) and (max-height: 500px) {
+  .pc-top-right {
+    flex-direction: row !important;
+    align-items: flex-start !important;
+  }
+  /* The measured free strip (useTopBarSlot): after the badge, which shows
+     the house name here, and before the pills. */
+  .pc-touch-controls,
+  .pc-touch-controls[data-minimap],
+  .pc-item-popover ~ .pc-touch-controls {
+    top: var(--pc-top-slot-top, 16px);
+    left: var(--pc-top-slot-start, 404px);
+    right: auto;
+    flex-wrap: wrap;
+    max-width: calc(var(--pc-top-slot-end, 100vw) - var(--pc-top-slot-start, 404px));
+  }
+}
+
+/* Page pinch-zoom is allowed for accessibility (#167); the canvases opt out
+   with touch-action: none. Taps on the HUD shouldn't double-tap-zoom the
+   page, and iOS zooms in on focus for any control under 16px, then stays
+   zoomed — so touch devices get 16px form controls. */
+.pc-glass,
+.pc-tile,
+.pc-sidebar,
+.pc-catalog-strip,
+.pc-touch-controls,
+button {
+  touch-action: manipulation;
+}
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* ================================================================
+   Overlays (mobile sprint)
+   The item editor, the toasts, the save notices and the minimap on
+   small screens. "Compact" below means (max-width: 768px) or
+   (max-height: 500px), COMPACT_OVERLAY_QUERY in lib/overlay-queue.ts;
+   the header-stats query (max-width: 1100px) or (max-height: 500px)
+   is HEADER_HIDDEN_QUERY there. Keep the three in step.
+   ================================================================ */
+
+/* Bottom-sheet pieces of the item popover: inert on large screens. */
+.pc-sheet-handle {
+  display: none;
+}
+.pc-sheet-more {
+  display: contents;
+}
+
+/* The minimap shares the top-right corner with the item popover (296px
+   wide at right: 16px); step left of it while an item is selected (#390). */
+.pc-minimap[data-beside-popover] {
+  right: 320px;
+}
+
+/* One column for the save failed / changed-in-another-tab notices (#385)
+   and the toasts, used where the header stats are hidden
+   (panels/overlay-stack.tsx). Its `top` is set from the chrome above it;
+   --pc-overlay-top is the floor for that. */
+.pc-overlay-stack {
+  position: fixed;
+  top: var(--pc-overlay-top, 148px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  pointer-events: none;
+}
+.pc-overlay-stack:empty {
+  display: none;
+}
+.pc-overlay-stack__alert,
+.pc-overlay-stack__toast {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
+.pc-overlay-stack__alert {
+  order: 0;
+}
+.pc-overlay-stack__toast {
+  order: 1;
+}
+.pc-overlay-stack__alert > *,
+.pc-overlay-stack__toast > * {
+  pointer-events: auto;
+  max-width: 100%;
+}
+/* Notices that must not be missed get an opaque base over the scene. */
+.pc-overlay-stack__alert > * {
+  background-color: rgba(28, 36, 44, 0.88) !important;
+  backdrop-filter: blur(8px);
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px), (max-height: 500px) {
+  /* :where() keeps this at zero specificity, so a :root rule in the HUD
+     blocks can change it without depending on source order. */
+  :where(:root) {
+    --pc-overlay-top: 8px;
+  }
+
+  /* Item popover: a bottom sheet. Collapsed it is the handle, the header
+     and the action row, so the selected item stays in view above it; the
+     handle expands it to the full editor, below the overlay stack. */
+  .pc-item-popover {
+    top: auto !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: min(60vh, calc(100vh - 240px)) !important;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden !important;
+    border-radius: 16px 16px 0 0 !important;
+    padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+  }
+  .pc-item-popover > header {
+    padding: 0 12px 8px !important;
+    flex-shrink: 0;
+  }
+  .pc-item-popover__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+    padding: 8px 12px 10px !important;
+    gap: 10px !important;
+    overscroll-behavior: contain;
+  }
+  .pc-item-popover[data-sheet='collapsed'] .pc-sheet-more {
+    display: none;
+  }
+  .pc-sheet-handle {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .pc-sheet-handle__bar {
+    width: 40px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--pc-paper-soft);
+    opacity: 0.7;
+  }
+  .pc-sheet-handle:focus-visible .pc-sheet-handle__bar {
+    background: var(--pc-cyan-glow);
+    opacity: 1;
+  }
+}
+
+/* Phones: a smaller minimap in its corner under the pills, so it clears
+   the catalog (#308); it stays put while an item is selected, the sheet
+   being at the bottom, and makes way for the expanded sheet. */
+@media (max-width: 768px) {
+  .pc-minimap,
+  .pc-minimap[data-beside-popover] {
+    right: 8px !important;
+    padding: 6px !important;
+  }
+  .pc-minimap canvas {
+    width: 132px !important;
+    height: 96px !important;
+  }
+  .pc-minimap p {
+    margin-bottom: 2px !important;
+  }
+  html[data-sheet-open='expanded'] .pc-minimap {
+    display: none;
+  }
+}
+
+/* Landscape phones and short windows: the corners belong to the title
+   badge, the pills and the HUD columns, so the minimap shrinks into the
+   top centre, and the item sheet keeps to the right so the scene stays
+   visible beside it. */
+@media (max-height: 500px) {
+  .pc-minimap,
+  .pc-minimap[data-beside-popover] {
+    top: 64px !important;
+    right: auto !important;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px !important;
+  }
+  .pc-minimap canvas {
+    width: 100px !important;
+    height: 72px !important;
+  }
+  .pc-minimap p {
+    display: none;
+  }
+  /* Room for the collapsed sheet (~135px) whatever the height. */
+  .pc-item-popover {
+    max-height: max(140px, calc(100vh - 120px)) !important;
+  }
+}
+@media (max-height: 500px) and (min-width: 560px) {
+  .pc-item-popover {
+    left: auto !important;
+    width: min(400px, 100%) !important;
+    border-radius: 16px 0 0 0 !important;
+  }
+}
+
+/* Clearing the open item sheet (panels/overlay-stack.tsx sets
+   data-squeeze): 1 puts the notices on one line, 2 also holds the toasts
+   back (their timers pause). The save-failed label always stays. */
+.pc-overlay-stack:not([data-squeeze='0']) .pc-overlay-stack__alert > * {
+  flex-wrap: nowrap;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.pc-overlay-stack:not([data-squeeze='0']) .pc-save-indicator {
+  display: flex !important;
+  flex-wrap: nowrap;
+  max-width: 100%;
+}
+.pc-overlay-stack:not([data-squeeze='0']) .pc-save-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pc-overlay-stack:not([data-squeeze='0']) .pc-save-advice,
+.pc-overlay-stack:not([data-squeeze='0']) .pc-save-advice-toggle {
+  display: none !important;
+}
+.pc-overlay-stack[data-squeeze='2'] .pc-overlay-stack__toast {
+  display: none;
+}
+
+/* A failed save explains itself in its `title`, which touch screens never
+   show: there the advice opens in place. */
+.pc-save-advice-toggle {
+  display: none;
+}
+.pc-save-advice {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  max-width: 34em;
+  white-space: normal;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--pc-paper);
+}
+
+@media (pointer: coarse) {
+  .pc-save-indicator {
+    flex-wrap: wrap;
+  }
+  .pc-save-advice-toggle {
+    display: inline-flex;
+    position: relative;
+    border: 0;
+    border-radius: 999px;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--pc-paper);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  /* 44px tap areas without changing how the small pill buttons look; the
+     wider gaps keep neighbouring areas from overlapping. */
+  .pc-remote-notice {
+    gap: 12px !important;
+  }
+  .pc-overlay-stack,
+  .pc-overlay-stack__alert {
+    gap: 16px;
+  }
+  .pc-remote-notice button {
+    position: relative;
+  }
+  .pc-remote-notice button::after,
+  .pc-save-advice-toggle::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* 2D plan (plan sprint) */
+/* A drag on the 2D plan (an item or a zone) must not run the browser's text
+   selection across the HUD labels it passes over (#442). The attribute is
+   set by use-canvas-2d-interaction while a press is armed. */
+.pc-plan-canvas,
+html[data-plan-gesture],
+html[data-plan-gesture] * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 2D switch (ux sprint) */
+/* The 2D plan switch at the head of the walls pill (#526), styled like the
+   wall tiles. The phone dock hides it: its ⋯ tray carries the switch.
+   The well takes the exact width of the "Walls" caption it replaced, so
+   the pill, and the plan and camera insets read from it, keep their size. */
+.pc-pill-well {
+  display: flex;
+  box-sizing: border-box;
+  flex: none;
+  width: 61.171875px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.pc-tile.pc-view-switch {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-family: var(--pc-font-display);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: var(--pc-tr-caps);
+  text-transform: uppercase;
+}
+@media (max-width: 768px), (max-width: 1100px) and (max-height: 500px) {
+  .pc-pill-well {
+    display: none;
+  }
+}
+
+/* P1 touch tablets and the walk HUD (polish sprint) */
+/* The walk stick takes the bottom-left corner, free of the mode panel on
+   tablets and landscape phones (#672, #682); only the portrait dock's
+   full-width mode bar lifts it. */
+.pc-walk-stick {
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+@media (max-width: 768px) and (min-height: 501px) {
+  .pc-walk-stick {
+    bottom: calc(100% - var(--pc-mode-top, 100%) + 16px);
+  }
+}
+
+/* Touch tablets keep the desktop HUD, sized here for a finger (#673). Only a
+   coarse primary pointer matches: never a mouse, touch laptops included.
+   Landscape phones have the compact dock. Tiles keep their painted height,
+   since growing them would cost scene and move everything measured from the
+   pills: the `::after` gives them the 44px tap. */
+.pc-wall-caption {
+  display: none;
+}
+@media (pointer: coarse) and (min-width: 769px) and (min-height: 501px) {
+  .pc-lot-badge > button,
+  .pc-floor-pill .pc-tile,
+  .pc-wall-pill .pc-tile,
+  .pc-mode-actions .pc-tile,
+  .pc-camera-fit,
+  .pc-walk-exit,
+  .pc-build-tools-header button,
+  .pc-catalog-strip button.pc-hud-header {
+    position: relative;
+  }
+  .pc-lot-badge > button::after,
+  .pc-floor-pill .pc-tile::after,
+  .pc-wall-pill .pc-tile::after,
+  .pc-camera-pad .pc-tile::after,
+  .pc-walk-exit::after,
+  .pc-budget-switch::after,
+  .pc-build-tools-header button::after,
+  .pc-catalog-strip button.pc-hud-header::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  /* Ten buttons in two rows: their pitch (42 × 40) is the most they can have
+     without the panel growing over the scene. */
+  .pc-mode-actions .pc-tile::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+  }
+
+  /* Floor tiles and the pager are as wide as a finger. */
+  .pc-floor-pill .pc-tile {
+    width: 44px !important;
+  }
+  .pc-catalog-pager:has(> button) {
+    grid-template-columns: 44px 1fr 44px !important;
+  }
+
+  /* Top-centre chips clear the pills, whose tap areas reach further now. */
+  @media (max-width: 1100px) {
+    .pc-top-chip {
+      top: calc(var(--pc-top-pills-bottom, 132px) + 8px) !important;
+    }
+  }
+
+  /* The camera menu is as tall as a page of tiles: a category tap must not
+     move the tools above the strip, or reframe the scene (#684). */
+  .pc-catalog-strip--menu {
+    display: flex;
+    flex-direction: column;
+    min-height: 211px;
+  }
+
+  /* Pinch zooms; the row is too small to tap. */
+  .pc-camera-zoom {
+    display: none !important;
+  }
+
+  /* Beside the stats bar (287px of room), or the longest house name on the
+     narrowest tablets, four floors can't have it all: the caption keeps its
+     icon, and the tiles fill their 41px pitch. */
+  @media (min-width: 1101px), (max-width: 800px) {
+    .pc-floor-pill {
+      gap: 4px !important;
+      padding: 6px 4px !important;
+    }
+    .pc-floor-pill .pc-pill-label {
+      padding: 0 !important;
+      font-size: 0 !important;
+    }
+    .pc-floor-pill .pc-tile {
+      width: 38px !important;
+    }
+    .pc-floor-pill > .pc-tile {
+      width: 40px !important;
+    }
+    .pc-floor-pill .pc-tile::after {
+      width: 41px;
+    }
+  }
+
+  /* The pill says what it controls (#679): the caption takes the room of
+     the tiles' glyphs, so the pill stays the width the stats bar allows. */
+  .pc-wall-pill {
+    gap: 3px !important;
+    padding: 6px 2px !important;
+  }
+  .pc-wall-caption {
+    display: block;
+    min-width: 52px;
+    font-size: 10px;
+    line-height: 1.1;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .pc-wall-caption__why {
+    display: block;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .pc-wall-pill [role='radio'] {
+    justify-content: center;
+    min-width: 44px;
+    padding: 4px !important;
+  }
+  .pc-wall-pill [role='radio'] svg {
+    display: none;
+  }
+
+  /* The tablet tool strip: labelled chips like the phone dock's, fading at
+     an edge when the row scrolls (#673, #679). */
+  @media (max-width: 1100px) {
+    .pc-build-tools {
+      padding: 4px !important;
+    }
+    .pc-build-tools-grid {
+      padding: 0 !important;
+      background: none !important;
+      border: 0 !important;
+      box-shadow: none !important;
+      gap: 4px !important;
+    }
+    .pc-build-tools-grid .pc-tile {
+      width: 72px !important;
+      min-width: 72px !important;
+      height: 44px !important;
+      padding: 3px 2px !important;
+      gap: 2px !important;
+    }
+    .pc-build-tools-label {
+      display: block !important;
+      font-size: 10px !important;
+      letter-spacing: 0.02em !important;
+    }
+    .pc-build-tools-grid {
+      --pc-fade-start: 0px;
+      --pc-fade-end: 0px;
+      -webkit-mask-image: linear-gradient(to right, transparent, #000 var(--pc-fade-start), #000 calc(100% - var(--pc-fade-end)), transparent);
+      mask-image: linear-gradient(to right, transparent, #000 var(--pc-fade-start), #000 calc(100% - var(--pc-fade-end)), transparent);
+    }
+    .pc-build-tools-grid[data-more-before] {
+      --pc-fade-start: 32px;
+    }
+    .pc-build-tools-grid[data-more-after] {
+      --pc-fade-end: 32px;
+    }
+  }
+}
+
+/* P3 (polish sprint) */
+/* The View menu opens above the item popover (36), not behind it: the HUD's
+   stacking context traps the menu's own z-index (#633). Below the drawer (40). */
+.pc-bottom-hud:has(.pc-view-menu) {
+  z-index: 37 !important;
+}
+/* Solid behind its glass tint: whatever it now covers must not read through. */
+.pc-bottom-hud .pc-view-menu {
+  background-color: var(--pc-ink);
+  background-image: linear-gradient(var(--pc-glass-tint-dark), var(--pc-glass-tint-dark));
+}
+
+/* P4 (polish sprint) */
+/* The colour input is invisible, so its well shows the keyboard focus (#557). */
+.pc-colour-well:has(input:focus-visible) {
+  outline: 2px solid var(--pc-cyan-glow);
+  outline-offset: 2px;
+}
+.pc-chip-name:focus-visible {
+  outline: 2px solid var(--pc-cyan-glow);
+  outline-offset: 1px;
+}
+
+/* Phone panels (polish sprint) */
+/* The wall panels in the compact dock, portrait and landscape: finger-sized
+   controls, and labels of at least 9px (#674). */
+@media (max-width: 768px), (max-width: 1100px) and (max-height: 500px) {
+  .pc-hud-left .pc-paint-tabs .pc-tile,
+  .pc-hud-left .pc-paint-row > .pc-tile,
+  .pc-hud-left .pc-stamp-go {
+    height: 44px !important;
+    font-size: 10px !important;
+  }
+  .pc-hud-left .pc-paint-tabs .pc-tile {
+    padding: 4px 8px !important;
+  }
+  .pc-hud-left .pc-paint-row > .pc-tile {
+    min-width: 40px;
+    padding: 0 6px !important;
+  }
+  .pc-hud-left .pc-paint-patterns > .pc-tile,
+  .pc-hud-left .pc-stamp-shapes > .pc-tile {
+    height: 44px !important;
+  }
+  .pc-hud-left .pc-paint-patterns > .pc-tile > span {
+    font-size: 9px !important;
+    letter-spacing: 0 !important;
+  }
+  .pc-hud-left .pc-paint-swatches {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)) !important;
+  }
+  .pc-hud-left .pc-paint-swatches > * {
+    height: 44px !important;
+  }
+  .pc-hud-left .pc-glass > p.pc-hud-header {
+    font-size: 10px !important;
+  }
+}
+/* An unfolded wall panel is for painting or stamping: in portrait the catalog
+   row folds away with the wall tool on, as it does in landscape, and leaves
+   the room to the scene. The stamp panel only shows with the tool; elsewhere,
+   a tapped wall's Paint leaves the catalog and its category chips working.
+   The open header is as tall as a tap (the folded bar has its padding). */
+@media (max-width: 768px) {
+  .pc-bottom-hud:has(> .pc-hud-left > .pc-room-stamp):has(> .pc-hud-left > .pc-glass:not(.pc-build-tools):not(.pc-dock-folded)) .pc-catalog-strip {
+    display: none !important;
+  }
+}
+@media (max-width: 768px), (max-width: 1100px) and (max-height: 500px) {
+  .pc-hud-left > .pc-glass:not(.pc-dock-folded) .pc-dock-fold-toggle {
+    min-height: 44px !important;
+  }
+}
+/* The tablet-width dock has room for the room shapes on one row. */
+@media (min-width: 600px) and (max-width: 768px) {
+  .pc-hud-left .pc-stamp-shapes {
+    grid-template-columns: repeat(7, 1fr) !important;
+  }
+}
+/* Sliders in the dock and the item editor: a 44px thumb on a touch screen. Its
+   border is see-through, so it draws at 28px. WebKit only moves a range input
+   from its thumb, so a taller input alone would not help there. */
+@media (pointer: coarse) {
+  .pc-room-stamp input[type='range'],
+  .pc-item-popover input[type='range'] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 44px;
+    margin: 0;
+    background: transparent;
+  }
+  .pc-room-stamp input[type='range']::-webkit-slider-runnable-track,
+  .pc-item-popover input[type='range']::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.5);
+  }
+  .pc-room-stamp input[type='range']::-moz-range-track,
+  .pc-item-popover input[type='range']::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.5);
+  }
+  .pc-room-stamp input[type='range']::-webkit-slider-thumb,
+  .pc-item-popover input[type='range']::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    box-sizing: border-box;
+    width: 44px;
+    height: 44px;
+    margin-top: -20px;
+    border: 8px solid transparent;
+    border-radius: 50%;
+    background: var(--pc-cyan-glow);
+    background-clip: padding-box;
+  }
+  .pc-room-stamp input[type='range']::-moz-range-thumb,
+  .pc-item-popover input[type='range']::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 44px;
+    height: 44px;
+    border: 8px solid transparent;
+    border-radius: 50%;
+    background: var(--pc-cyan-glow);
+    background-clip: padding-box;
+  }
+}
+
+/* A folded wall panel is one big toggle: the whole bar opens it, not just its
+   label (#681). */
+.pc-dock-folded {
+  position: relative;
+  overflow: hidden; /* the toggle's corners end with the bar's */
+}
+.pc-dock-folded .pc-dock-fold-toggle {
+  flex: 1;
+  justify-content: space-between;
+  width: 100%;
+}
+.pc-dock-folded .pc-dock-fold-toggle::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+/* The drawer and the item sheet stay clear of a notch and the status bar
+   (#676). Viewport-covering in portrait and on the small landscape phones;
+   floating on the wider ones, where only its offsets need the insets. */
+@media (max-width: 768px) {
+  .pc-sidebar {
+    max-width: 100% !important;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px)) !important;
+  }
+}
+@media (min-width: 769px) and (max-width: 1100px) and (max-height: 500px) {
+  .pc-sidebar {
+    left: calc(16px + env(safe-area-inset-left, 0px)) !important;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (max-width: 768px), (max-height: 500px) {
+  .pc-item-popover {
+    padding-right: env(safe-area-inset-right, 0px) !important;
+    padding-left: env(safe-area-inset-left, 0px) !important;
+  }
+}
+/* Docked to the right edge there: its left side is nowhere near the notch. */
+@media (max-height: 500px) and (min-width: 560px) {
+  .pc-item-popover {
+    padding-left: 0 !important;
+  }
+}
+
+/* Floor rows and actions on a touch screen (#680): four buttons 40px wide
+   and 44px tall, on one line with the name in the full-width drawer. */
+@media (pointer: coarse) {
+  .pc-floor-head .pc-tile {
+    height: 44px !important;
+  }
+  .pc-floor-row {
+    align-items: stretch !important;
+  }
+  .pc-floor-row > button {
+    width: 40px !important;
+    height: 44px !important;
+  }
+  .pc-floor-row > button.pc-tile {
+    width: auto !important;
+    min-width: 0;
+  }
+  .pc-floor-move {
+    flex-direction: row !important;
+    gap: 4px;
+  }
+  .pc-floor-move > button {
+    width: 40px !important;
+    height: 44px !important;
+  }
+  .pc-floor-row input {
+    height: 32px !important;
+  }
+}
+/* The 320px floating drawer has no line for all of it: the name goes first. */
+@media (pointer: coarse) and (min-width: 769px) {
+  .pc-floor-row {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .pc-floor-row > button.pc-tile {
+    flex: 1 1 100% !important;
+  }
+}
+
+/* The rest of the drawer's buttons and fields, every tab: a 44px row on a touch
+   screen. Colour chips and switches keep their shape. */
+@media (pointer: coarse) {
+  .pc-sidebar [role='tabpanel'] button:not([role='switch']):not([aria-label*='colour']),
+  .pc-sidebar [role='tabpanel'] select,
+  .pc-sidebar [role='tabpanel'] input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']) {
+    min-height: 44px;
+  }
+}
+
+/* The item editor on a touch screen (#675). Demolish joins the sheet's action
+   row, so it no longer takes an expand and a scroll. */
+@media (max-width: 768px), (max-height: 500px) {
+  .pc-item-actions > .pc-tile {
+    padding-right: 1px !important;
+    padding-left: 1px !important;
+  }
+  .pc-item-actions > .pc-tile > span {
+    letter-spacing: 0 !important;
+  }
+  .pc-sheet-demolish {
+    border-color: rgba(228, 82, 72, 0.5) !important;
+    background: rgba(228, 82, 72, 0.1) !important;
+    color: var(--pc-demolish-ink) !important;
+  }
+  .pc-sheet-demolish > span {
+    color: var(--pc-demolish-ink) !important;
+  }
+}
+@media (pointer: coarse) {
+  /* Stays out of the header's height: the sheet keeps its size. */
+  .pc-item-popover > header .pc-tile {
+    width: 44px !important;
+    height: 44px !important;
+    margin: -6px -6px -6px 0;
+  }
+  .pc-item-popover__body .pc-tile,
+  .pc-item-popover__body select {
+    min-height: 44px;
+  }
+  .pc-item-popover input[type='color'] {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .pc-item-popover button[aria-label^='Use colour'],
+  .pc-item-popover button[aria-label^='Reuse colour'] {
+    width: 36px !important;
+    height: 36px !important;
+    margin: 2px;
+  }
+}
+/* A 44px grab strip that reaches over the header, whose empty parts let the
+   touch through to it. */
+@media (pointer: coarse) and (max-width: 768px), (pointer: coarse) and (max-height: 500px) {
+  .pc-sheet-handle {
+    align-items: flex-start;
+    height: 44px;
+    margin-bottom: -22px;
+    padding-top: 9px;
+  }
+  .pc-item-popover > header {
+    position: relative;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .pc-item-popover > header button {
+    pointer-events: auto;
+  }
+}
+/* The floating editor on a touch tablet stops above the mode panel and scrolls.
+   The sheet's tall slider rows would push it onto that panel: here each row is
+   32px, with a 44px-wide thumb that still draws at 28px. */
+@media (pointer: coarse) and (min-width: 769px) and (min-height: 501px) {
+  .pc-item-popover {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(var(--pc-mode-top, 100dvh) - 138px);
+  }
+  .pc-item-popover__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none !important;
+  }
+  .pc-item-popover input[type='range'] {
+    height: 32px;
+  }
+  .pc-item-popover input[type='range']::-webkit-slider-thumb {
+    height: 32px;
+    margin-top: -14px;
+    border-width: 2px 8px;
+  }
+  .pc-item-popover input[type='range']::-moz-range-thumb {
+    height: 32px;
+    border-width: 2px 8px;
+  }
+}
+/* Bigger controls, the same bite of the scene: the expanded sheet scrolls. */
+@media (pointer: coarse) and (max-width: 768px) and (min-height: 501px) {
+  .pc-item-popover[data-sheet='expanded'] {
+    max-height: min(284px, 60vh, calc(100vh - 240px)) !important;
+  }
+}
+
+/* Notices on a touch screen: 44px tap areas without changing how the small
+   buttons look, and the wider gap keeps those areas from overlapping. A link
+   to copy by hand has the room for its 16px text (#704, #685). */
+@media (pointer: coarse) {
+  .pc-status-toast > div:first-child {
+    gap: 16px !important;
+  }
+  .pc-status-toast button {
+    position: relative;
+  }
+  .pc-status-toast button::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+  .pc-status-toast input {
+    height: 36px !important;
+  }
+}
+
+/* L1 (plan parity) */
+.pc-remove-wall {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 32px;
+  margin-top: 8px;
+  border: 1px solid var(--pc-demolish);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--pc-demolish-ink);
+  font-family: var(--pc-font-display);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pc-remove-wall:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (pointer: coarse) {
+  .pc-remove-wall {
+    min-height: 44px;
+  }
+}
+
+/* B1 wall tools (core building) */
+/* The status toast keeps clear of the wall tool chip, field open or not. */
+body:has(.pc-wall-hint) .pc-status-toasts {
+  top: 216px !important;
+}

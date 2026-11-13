@@ -1,0 +1,959 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## [Unreleased]
+
+## [1.30.0] - 2026-11-07
+
+The **Rendering & performance II** milestone, second wave: the editor is quicker and steadier. Pages load faster, no frames are spent when nothing moves, big houses no longer freeze, and the scene holds together: upper storeys stand on a floor, and garden items follow a sloped site.
+
+### Changed
+- First load is lighter: the error screens no longer pull in the catalogue and schema, so the page's startup code drops from 150 KB to 111 KB gzipped ([#584](https://github.com/ch-bas/threejs-sims-house-builder/issues/584))
+- The print, blueprint, SVG and DXF exports load when you use them instead of on every visit ([#589](https://github.com/ch-bas/threejs-sims-house-builder/issues/589))
+- The editor and 3D engine start downloading with the page instead of after it ([#731](https://github.com/ch-bas/threejs-sims-house-builder/issues/731))
+- The first visit no longer freezes for about two seconds while shaders compile; "Loading the lot…" stays up until the scene has drawn ([#730](https://github.com/ch-bas/threejs-sims-house-builder/issues/730))
+- Rain, walkers and camera cones animate at a steady 30 frames a second and pause while the tab is hidden ([#671](https://github.com/ch-bas/threejs-sims-house-builder/issues/671))
+- Walkers refresh their shadows ten times a second instead of every frame ([#668](https://github.com/ch-bas/threejs-sims-house-builder/issues/668))
+- Rain and snow no longer re-upload every particle each frame ([#669](https://github.com/ch-bas/threejs-sims-house-builder/issues/669))
+- Upper storeys stand on a floor slab: closed when seen from below, and upstairs shade no longer lands on the floor below ([#653](https://github.com/ch-bas/threejs-sims-house-builder/issues/653))
+- The plan draws a stairwell exactly as the floor is cut: stopped at the wall, and one opening for overlapping stairs ([#559](https://github.com/ch-bas/threejs-sims-house-builder/issues/559))
+
+### Fixed
+- The 2D plan no longer draws the hidden 3D scene on every edit ([#667](https://github.com/ch-bas/threejs-sims-house-builder/issues/667))
+- The walkthrough no longer redraws every frame while you stand still ([#666](https://github.com/ch-bas/threejs-sims-house-builder/issues/666))
+- Rain and snow reach the ground on a lowered or sloping lot ([#595](https://github.com/ch-bas/threejs-sims-house-builder/issues/595))
+- Garden items, their lamps' light, labels and walkthrough collisions follow a sloped site instead of floating above it or sinking into it ([#665](https://github.com/ch-bas/threejs-sims-house-builder/issues/665))
+- After a GPU reset the scene keeps its lighting instead of turning dark ([#663](https://github.com/ch-bas/threejs-sims-house-builder/issues/663))
+- Indoor lamps no longer light the house's outer walls, dormers and eaves through them ([#814](https://github.com/ch-bas/threejs-sims-house-builder/issues/814))
+- Sharing a house too big for a link says so at once instead of freezing for seconds ([#611](https://github.com/ch-bas/threejs-sims-house-builder/issues/611))
+- Undo and redo on a sloped site no longer rebuild the garden, street and walls ([#603](https://github.com/ch-bas/threejs-sims-house-builder/issues/603))
+- Entering the walkthrough in a very large house with no outside door no longer freezes ([#602](https://github.com/ch-bas/threejs-sims-house-builder/issues/602))
+
+## [1.29.0] - 2026-11-04
+
+The **Rendering & performance II** milestone, first wave: a more lifelike house. Furniture has soft edges, real materials and contact shadows; walls and floors are at true scale with relief; windows and doors sit in real reveals; the lot sits in a world with a sky, horizon and textured ground; and nights come alive without costing any extra lights. Phones keep their speed, and a new quality setting lets you trade looks for speed.
+
+### Added
+- Furniture rests on the floor with soft contact shadows under every item, stairs and walls, which lift away while you drag ([#754](https://github.com/ch-bas/threejs-sims-house-builder/issues/754))
+- Furniture has real materials: oiled and lacquered wood, fabric, leather, metal and glass, with fine wood grain and weave ([#756](https://github.com/ch-bas/threejs-sims-house-builder/issues/756))
+- Doors and windows sit back in lined reveals in the outer walls, so the sun shades a real recess; curtains hang clear of them. Not on phones ([#758](https://github.com/ch-bas/threejs-sims-house-builder/issues/758))
+- A sky dome with clouds and a sun that sets, a horizon that fades into haze, and textured grass, paving, asphalt and a kerb ([#761](https://github.com/ch-bas/threejs-sims-house-builder/issues/761))
+- Night comes alive: lit windows seen from outside, glowing lamp shades, soft halos, lit and dark windows along the street, and warm light in the room you walk in ([#759](https://github.com/ch-bas/threejs-sims-house-builder/issues/759))
+- A render quality choice in View options (Auto, Low, Medium, High). Auto keeps the picture you had; Low leaves out the costliest scenery ([#760](https://github.com/ch-bas/threejs-sims-house-builder/issues/760))
+
+### Changed
+- Furniture has softly rounded edges, and kitchen units show doors and handles, drawn in fewer meshes than before ([#755](https://github.com/ch-bas/threejs-sims-house-builder/issues/755))
+- Wood floors have 14 cm boards with staggered joints, and floors and walls catch the light, with sharper patterns, grout and mortar in relief on desktop and tablet ([#757](https://github.com/ch-bas/threejs-sims-house-builder/issues/757))
+- Brick and siding have true proportions and run on across floors; gable ends are built in the wall finish under a verge and soffit, and hipped roofs get soffits and fascias ([#661](https://github.com/ch-bas/threejs-sims-house-builder/issues/661))
+- Straight stairs have a closed string that follows the steps ([#658](https://github.com/ch-bas/threejs-sims-house-builder/issues/658))
+
+### Fixed
+- Window and shower glass no longer cast a solid shadow ([#551](https://github.com/ch-bas/threejs-sims-house-builder/issues/551))
+- Item labels float above the item, not across a window or under a pendant ([#657](https://github.com/ch-bas/threejs-sims-house-builder/issues/657))
+- Security-camera cones no longer redraw the scene when nothing moves, and no longer bleach walls white ([#556](https://github.com/ch-bas/threejs-sims-house-builder/issues/556), [#652](https://github.com/ch-bas/threejs-sims-house-builder/issues/652))
+- Doors and windows hide with their wall in Cut and Down views instead of standing in mid-air, including on an L-shaped house ([#659](https://github.com/ch-bas/threejs-sims-house-builder/issues/659))
+- While walking, partitions reach the ceiling ([#656](https://github.com/ch-bas/threejs-sims-house-builder/issues/656))
+- Partitions drawn to the outer wall no longer flicker through it, and doors at their ends stay open; porch steps reach the ground; rain and snow stay off under the eaves ([#660](https://github.com/ch-bas/threejs-sims-house-builder/issues/660))
+- Stairs on the top storey stop under the roof, and say when they lead nowhere ([#654](https://github.com/ch-bas/threejs-sims-house-builder/issues/654))
+- A party-wall neighbour's roof no longer pokes into your top storey ([#655](https://github.com/ch-bas/threejs-sims-house-builder/issues/655))
+- Indoor lamps no longer light the garden and the neighbours through the walls ([#664](https://github.com/ch-bas/threejs-sims-house-builder/issues/664))
+- A sun-facing dormer no longer shadows itself ([#782](https://github.com/ch-bas/threejs-sims-house-builder/issues/782))
+
+## [1.28.0] - 2026-11-01
+
+The **Core building** milestone: walls stay editable after you draw them, closed walls become real rooms with their own floors, and a house can be L-shaped. The house also looks better: natural daylight, walls lit by the sun, and a calmer camera lens.
+
+### Added
+- Cut a corner out of the house for an L-shaped footprint (Room Settings → House shape). Furniture, doors, walls, zones, the walkthrough, plans and every export follow the real outline. An L-shaped house takes a flat roof for now ([#727](https://github.com/ch-bas/threejs-sims-house-builder/issues/727))
+- Drag a selected interior wall or its ends to move it, in 3D and on the 2D plan. Connected walls, doors, windows and hung decor come with it, and one Undo takes it all back ([#718](https://github.com/ch-bas/threejs-sims-house-builder/issues/718))
+- Statistics lists the rooms your walls close, with their areas. Name a closed room in one click: L-shaped rooms get true areas, and the zone follows its walls ([#719](https://github.com/ch-bas/threejs-sims-house-builder/issues/719))
+- Each room can have its own floor pattern and colour, and each side of an interior wall can have its own paint ([#720](https://github.com/ch-bas/threejs-sims-house-builder/issues/720))
+- Type an exact length while drawing a wall. Walls snap to 15° steps and a 0.1 m grid, with Shift for free drawing, and the status chip shows length and angle ([#723](https://github.com/ch-bas/threejs-sims-house-builder/issues/723))
+
+### Changed
+- Room stamps now go where you click, and you can drag to size them. They snap to walls and leave out sides that already have a wall ([#724](https://github.com/ch-bas/threejs-sims-house-builder/issues/724))
+- Daylight looks natural: a white noon sun, warm dawn and dusk, real shadows, moonlit nights, and paints that match their swatches. Lamps come on an hour before sunset ([#752](https://github.com/ch-bas/threejs-sims-house-builder/issues/752))
+- The camera uses a 40° lens, so the house has calmer verticals and true proportions, and it can tilt lower to show more sky. Walkthrough stays wide ([#753](https://github.com/ch-bas/threejs-sims-house-builder/issues/753))
+- Holding an arrow key in a button group moves one step, not several
+
+### Fixed
+- Sun-facing outer walls now take direct sun, so trees and eaves cast shadows on them ([#752](https://github.com/ch-bas/threejs-sims-house-builder/issues/752))
+- Stars and the moon stay in the sky on very large houses, and walls on them no longer show dashed marks at a distance ([#753](https://github.com/ch-bas/threejs-sims-house-builder/issues/753))
+- The camera stays above sloped ground, and focus stays clear of partitions and frames items outside the house from outside ([#753](https://github.com/ch-bas/threejs-sims-house-builder/issues/753))
+- A right-click in 3D no longer places a wall point or a measuring point
+
+## [1.27.0] - 2026-10-31
+
+The **Plan parity II** milestone: the 2D plan is a real editor now, with walls and zones you can edit in place, proper door and window symbols, and exports that say more.
+
+### Added
+- You can now draw, select and demolish interior walls on the 2D plan, by mouse or by touch ([#564](https://github.com/ch-bas/threejs-sims-house-builder/issues/564))
+- Zones can be moved and resized directly on the 2D plan, with handles sized for fingers, instead of being deleted and redrawn ([#628](https://github.com/ch-bas/threejs-sims-house-builder/issues/628))
+- New View option: see the floor below as a faint guide while planning an upper storey in 2D ([#624](https://github.com/ch-bas/threejs-sims-house-builder/issues/624))
+- Stairs show which treads sit under the stairwell, on the plan and in exports, and warn when headroom is under 2 m ([#631](https://github.com/ch-bas/threejs-sims-house-builder/issues/631))
+- SVG and DXF downloads show where each door and window sits along the exterior walls ([#630](https://github.com/ch-bas/threejs-sims-house-builder/issues/630))
+- DXF exports include room zones with their names and areas ([#571](https://github.com/ch-bas/threejs-sims-house-builder/issues/571))
+
+### Changed
+- Doors and windows appear on the 2D plan, minimap and printed blueprint as proper symbols with wall gaps and door swings ([#576](https://github.com/ch-bas/threejs-sims-house-builder/issues/576))
+- Printed blueprints are much sharper, and a failed print no longer leaves a blank tab ([#619](https://github.com/ch-bas/threejs-sims-house-builder/issues/619))
+- Each wall segment is its own undo step, in 2D and 3D; tapping Walls again ends the tool; Escape also clears a selected wall ([#564](https://github.com/ch-bas/threejs-sims-house-builder/issues/564))
+
+### Fixed
+- SVG exports open again when a house, floor, zone or item name contains a stray control character ([#549](https://github.com/ch-bas/threejs-sims-house-builder/issues/549))
+- Interior wall lengths on exported plans no longer print over door swings ([#592](https://github.com/ch-bas/threejs-sims-house-builder/issues/592))
+- Dragging a door or window to another wall on the 2D plan shows it turned to that wall before you let go ([#601](https://github.com/ch-bas/threejs-sims-house-builder/issues/601))
+- The cost heatmap legend is no longer hidden behind the mode panel ([#567](https://github.com/ch-bas/threejs-sims-house-builder/issues/567))
+- Zone areas no longer count the recessed porch, and a zone can't be drawn or dragged onto the porch ([#582](https://github.com/ch-bas/threejs-sims-house-builder/issues/582))
+- A porch taller than its storey in an imported house no longer opens the floor above to the street, and a storey too low for a porch no longer keeps a stray door and wall ([#587](https://github.com/ch-bas/threejs-sims-house-builder/issues/587))
+- The blueprint shows the cost with its currency, and item schedules list sizes to the centimetre ([#596](https://github.com/ch-bas/threejs-sims-house-builder/issues/596))
+
+## [1.26.0] - 2026-10-31
+
+The first wave of **Polish: desktop & mobile**: touch tablets can walk and tap, phones get finger-sized panels, the keyboard reaches everything, and items explain themselves.
+
+### Added
+- The U key locks and unlocks the selected item. An arrow key, R or a drag on the 2D plan that meets a locked item now says why nothing moved and how to unlock it, and the item popover and the phone sheet say why Rotate and Centre are off ([#635](https://github.com/ch-bas/threejs-sims-house-builder/issues/635))
+- The item popover and the Style tab say why an item shows red: which item it overlaps, or that it stands outside the room, in the porch, over the stairwell or inside an interior wall ([#627](https://github.com/ch-bas/threejs-sims-house-builder/issues/627))
+- The Undo and Redo tooltips name the step they take, such as "Undo: move Sofa on Ground" or "Undo: remove floor “Attic”" ([#625](https://github.com/ch-bas/threejs-sims-house-builder/issues/625))
+
+### Changed
+- On touch tablets the floor and wall tiles, the mode panel's buttons, the build tools, the catalogue arrows, the sidebar button and the Hard budget switch are easy to tap. Pinch replaces the camera pad's zoom row there; computers with a mouse look the same as before ([#673](https://github.com/ch-bas/threejs-sims-house-builder/issues/673))
+- On touch tablets the build tools carry their names, and the wall pill says "Walls", with "3D only" or "Walking" when its buttons are off ([#679](https://github.com/ch-bas/threejs-sims-house-builder/issues/679))
+- The Up/Cut/Down wall switch, Paint's tabs and Apply To, and the Weather buttons are one stop for the Tab key: the arrow keys move between their options, and Paint's tab rows now have names a screen reader can read ([#646](https://github.com/ch-bas/threejs-sims-house-builder/issues/646), [#557](https://github.com/ch-bas/threejs-sims-house-builder/issues/557))
+- Locked achievements stay readable: the lock icon and dashed border mark them instead of fading the whole row. Disabled buttons turn neutral and outlined, so a disabled Pack no longer looks like the main action, while a selected option keeps a tint. On a locked item, the W/D/H values and the stairs shape stay at full strength; only the sliders dim ([#640](https://github.com/ch-bas/threejs-sims-house-builder/issues/640))
+- FURNISH calls its panel and strip "Furniture" instead of "Build Tools" ([#641](https://github.com/ch-bas/threejs-sims-house-builder/issues/641))
+- The Restore question in History names the house and the time. History no longer lists a restore point that is the house on screen ([#647](https://github.com/ch-bas/threejs-sims-house-builder/issues/647))
+- The welcome tips say that items lock once placed ([#635](https://github.com/ch-bas/threejs-sims-house-builder/issues/635))
+- On a phone, Demolish is now one of the item sheet's actions, one tap away, instead of at the bottom of the expanded sheet ([#675](https://github.com/ch-bas/threejs-sims-house-builder/issues/675))
+- On a phone, unfolding Paint or Room Stamp with the wall tool on folds the catalogue row away in portrait, as landscape already did, so more of the house stays in view ([#674](https://github.com/ch-bas/threejs-sims-house-builder/issues/674))
+- Share link opens the phone's share sheet on touch screens that have one. If the browser refuses it, the copy field offers a Share button and stays until the link has gone ([#685](https://github.com/ch-bas/threejs-sims-house-builder/issues/685))
+
+### Fixed
+- On touch tablets a catalogue category that fits one page, such as Openings, no longer shows empty slots and Previous and Next buttons that do nothing: the strip stays the same size, so the tools above it never move ([#684](https://github.com/ch-bas/threejs-sims-house-builder/issues/684))
+- On touch tablets the walkthrough thumb stick and the Sit and Stand button are on screen, so you can walk: they were drawn above the top of the screen. The stick sits in the bottom-left corner on tablets ([#672](https://github.com/ch-bas/threejs-sims-house-builder/issues/672))
+- On a landscape phone the walkthrough thumb stick sits in the bottom-left corner, in reach of your thumb, instead of the middle of the left edge ([#682](https://github.com/ch-bas/threejs-sims-house-builder/issues/682))
+- On a landscape phone the camera buttons follow the sidebar button when the screen's notch area changes, so they can't end up on top of it ([#683](https://github.com/ch-bas/threejs-sims-house-builder/issues/683))
+- Add floor shows a plus instead of a plus-minus sign, on the floor pill and in the drawer ([#686](https://github.com/ch-bas/threejs-sims-house-builder/issues/686))
+- The camera pad's zoom buttons are full size instead of thin slivers either side of the slider ([#639](https://github.com/ch-bas/threejs-sims-house-builder/issues/639))
+- With the panels open, Tab now reaches the item popover and notices with a button, and Escape closes the popover before the panels ([#632](https://github.com/ch-bas/threejs-sims-house-builder/issues/632)).
+- Delete on a Placed Items row removes that row, whatever is selected, and focus moves to the next row ([#634](https://github.com/ch-bas/threejs-sims-house-builder/issues/634)).
+- The share link to copy by hand takes focus, already selected, and Escape puts it away ([#632](https://github.com/ch-bas/threejs-sims-house-builder/issues/632)).
+- The View options menu opens over the item popover instead of behind it, and nothing reads through it ([#633](https://github.com/ch-bas/threejs-sims-house-builder/issues/633)).
+- Keyboard focus no longer drops to the top of the page after placing an item, Escape, Demolish, removing a row, closing the panels or pressing Undo on a notice ([#638](https://github.com/ch-bas/threejs-sims-house-builder/issues/638)).
+- The Up/Cut/Down wall switch, Paint's tabs and Apply To, and the Weather buttons are one stop for the Tab key: the arrow keys move between their options, and Paint's tab rows now have names a screen reader can read ([#646](https://github.com/ch-bas/threejs-sims-house-builder/issues/646), [#557](https://github.com/ch-bas/threejs-sims-house-builder/issues/557))
+- Locked achievements stay readable: the lock icon and dashed border mark them instead of fading the whole row. Disabled buttons turn neutral and outlined, so a disabled Pack no longer looks like the main action. On a locked item, the W/D/H values and the stairs shape stay at full strength; only the sliders dim ([#640](https://github.com/ch-bas/threejs-sims-house-builder/issues/640))
+- Screen readers now hear what things are: catalogue tiles say the item's name as well as its price ([#637](https://github.com/ch-bas/threejs-sims-house-builder/issues/637)), Sloped site and Recessed entrance are switches named after their label, the drawer's All button says whether it's on, and the floor buttons say the floor's name ([#645](https://github.com/ch-bas/threejs-sims-house-builder/issues/645)). Each achievement says Locked or Unlocked, and the bar reads as a progress bar ([#648](https://github.com/ch-bas/threejs-sims-house-builder/issues/648))
+- With "reduce motion" on, the achievement notice and the saving icon no longer pulse. Selected item colours are announced as selected, the custom colour well and the set and zone name fields show a keyboard focus ring, and renaming a floor works in a proper field instead of one inside a button ([#557](https://github.com/ch-bas/threejs-sims-house-builder/issues/557))
+- The Buy tab's hint describes what clicking an item does: it picks the item up to place ([#644](https://github.com/ch-bas/threejs-sims-house-builder/issues/644))
+- A "Loaded …" note clears when another house replaces the one it named ([#647](https://github.com/ch-bas/threejs-sims-house-builder/issues/647))
+- The rotation field keeps what you type: -90 no longer turns into 351 on the way to 270, and 400 shows as 40 when you leave the field or press Enter ([#548](https://github.com/ch-bas/threejs-sims-house-builder/issues/548))
+- The phone Paint and Room Stamp panels have finger-sized buttons, swatches and sliders in portrait as well as in landscape ([#674](https://github.com/ch-bas/threejs-sims-house-builder/issues/674))
+- The phone item sheet's Close button, handle, colour controls and sliders are finger-sized, and so are the same controls in the item panel on touch tablets ([#675](https://github.com/ch-bas/threejs-sims-house-builder/issues/675))
+- The side drawer and the item sheet stay clear of the notch and the status bar ([#676](https://github.com/ch-bas/threejs-sims-house-builder/issues/676))
+- On touch screens the floor list's buttons are finger-sized and the hint says to tap the pencil instead of double-clicking. The other buttons in the side panels, on every tab, get 44 px rows ([#680](https://github.com/ch-bas/threejs-sims-house-builder/issues/680))
+- A tap anywhere on a folded Paint or Room Stamp bar opens it, not just on its label ([#681](https://github.com/ch-bas/threejs-sims-house-builder/issues/681))
+- On a phone a new Undo notice replaces the earlier ones, so the Undo on screen is always the one that works and it gets its full time. Closing a notice from the keyboard puts the focus back where it was, and notice buttons have larger tap areas ([#704](https://github.com/ch-bas/threejs-sims-house-builder/issues/704))
+- Share link copies straight away on Safari, where it used to fall back to the copy field ([#685](https://github.com/ch-bas/threejs-sims-house-builder/issues/685))
+
+## [1.25.0] - 2026-10-31
+
+The **Data safety & feedback** milestone: questions asked in the app, Undo on removals, a reason for every refusal, safer library saves, and a one-file backup of everything in this browser.
+
+### Added
+- Demolish, the remove button in the item list, Delete and Clear floor now show "Removed Sofa" (or how many items went) with an Undo button that takes back just that removal. The notice stays while the pointer or the keyboard focus is on it ([#651](https://github.com/ch-bas/threejs-sims-house-builder/issues/651))
+- Manage → Storage & backup shows how much browser storage the open house, saved layouts, restore points, recovery copies, received houses, custom sets, settings and other sites use, and lets you delete a saved layout or every restore point from there ([#615](https://github.com/ch-bas/threejs-sims-house-builder/issues/615))
+- Back up everything this browser keeps for the editor (the house, saved layouts, restore points, recovery copies, received houses, custom sets and settings) to one file in Manage → Storage & backup. Restoring it adds what is missing and never replaces or deletes your houses, sets or settings: a saved layout whose name is taken comes back as "name (backup)", the backed-up open house goes to Saved Layouts, and what doesn't fit is named in the notice ([#620](https://github.com/ch-bas/threejs-sims-house-builder/issues/620))
+
+### Changed
+- Questions such as deleting a saved layout or set, clearing a floor, removing a floor, replacing your house or going over the budget now open in a dialog inside the editor that matches its look, instead of the browser's own pop-up that froze the scene and the autosave. Enter confirms, Escape cancels, and the keys you press while it is open don't reach the house behind it. A blocked print pop-up and Saved Layouts' errors (no name, storage full, an unreadable save or restore point) show in the editor too ([#649](https://github.com/ch-bas/threejs-sims-house-builder/issues/649))
+
+### Fixed
+- EXPLORE no longer edits the house from the 2D plan: clicks on the plan only select, the editing shortcuts (rotate, nudge, duplicate, copy, paste, delete) are off, and the item panel's editing controls are disabled with a "Not while exploring" hint; undo and redo still work ([#699](https://github.com/ch-bas/threejs-sims-house-builder/issues/699))
+- With the hard budget on, Clone on a floor whose furniture you can't afford again now plays the refusal sound and says what the copy would cost and how much is left, instead of doing nothing ([#588](https://github.com/ch-bas/threejs-sims-house-builder/issues/588))
+- A greyed-out catalogue tile now says why when you click it or press Enter ("Over budget: $200 left", or that garden items go on the ground floor), with the refusal sound, instead of doing nothing ([#642](https://github.com/ch-bas/threejs-sims-house-builder/issues/642))
+- Loading a template keeps your hard budget switch and what earlier sales wrote off. With the hard budget on, the furniture the template replaces sells back at 80% like Clear floor, and a template you can't afford is refused with the refusal sound and a message saying what it costs and what is left ([#691](https://github.com/ch-bas/threejs-sims-house-builder/issues/691))
+- The per-floor costs in Statistics and on the printed blueprint no longer count the porch door of older saves, so they add up to the header's spending ([#693](https://github.com/ch-bas/threejs-sims-house-builder/issues/693))
+- In EXPLORE the Hard budget switch is off, with the "Not while exploring" hint, like every other change to the house ([#700](https://github.com/ch-bas/threejs-sims-house-builder/issues/700))
+- Saving a copy to Saved Layouts can no longer take the last of the browser's storage: a copy that would leave the house you are editing no room to grow and autosave is refused with a message that says so; checking never deletes restore points, a house with a large floor-plan image can still be copied, and re-saving a copy that adds nothing is never refused ([#565](https://github.com/ch-bas/threejs-sims-house-builder/issues/565))
+- A house named in another script or with accents, such as "東京の家" or "Café", now saves to one slot of its own: saving it again asks to overwrite it instead of adding a duplicate, and "Café" no longer overwrites "Caf". Houses saved under the old slots still load ([#550](https://github.com/ch-bas/threejs-sims-house-builder/issues/550))
+- An edit made just before switching away from the tab is saved straight away, so a phone browser that closes the tab in the background no longer loses it ([#554](https://github.com/ch-bas/threejs-sims-house-builder/issues/554))
+- A Wi-Fi or camera range from a crafted file, link or set is capped at 1 km instead of breaking the plan, the SVG and DXF exports and the 3D view; a saved set with a negative price or other bad values is repaired like a loaded house, so it can't fake the budget; and a house that loads with something left out says what was dropped and why, instead of always blaming the per-floor item limit ([#553](https://github.com/ch-bas/threejs-sims-house-builder/issues/553))
+- Opening a share link over a house you've worked on no longer replaces it without a word: your house opens first and you're asked whether to open the shared one. Keep mine is the default. If you open it, yours is kept as a restore point and the notice's Undo button (or Ctrl+Z) brings it back; if you don't, nothing changes ([#573](https://github.com/ch-bas/threejs-sims-house-builder/issues/573))
+- A share link that won't open says why, in a notice instead of a blocking pop-up: far too large, cut off when it was copied, or made by a newer version of the app. Pasting such a link into the paste-board says the same ([#607](https://github.com/ch-bas/threejs-sims-house-builder/issues/607))
+
+## [1.24.0] - 2026-10-28
+
+The **Correctness sweep** milestone: the editor, the walker, the budget and the collision rules now agree, and a house that crashes the editor is never saved.
+
+### Changed
+- On a floor with zones, Arrange keeps each room's furniture in its zone, and packs what stands outside every zone into the space left over ([#629](https://github.com/ch-bas/threejs-sims-house-builder/issues/629))
+
+### Fixed
+- Undoing an edit straight after making it, then redoing, no longer brings back a change you had already undone and replaced ([#546](https://github.com/ch-bas/threejs-sims-house-builder/issues/546))
+- An edit made just before importing a file, loading a template or library house, applying a theme or taking another tab's version keeps its own undo step, instead of being lost when you undo the load ([#555](https://github.com/ch-bas/threejs-sims-house-builder/issues/555))
+- Undo and redo show the right floor: undoing a floor removal or reorder stays on the floor you were on, and undoing a change made on another floor switches to that floor so you can see it ([#578](https://github.com/ch-bas/threejs-sims-house-builder/issues/578))
+- Surprise me stays within the budget: it picks a furniture set you can afford (or decor only), with the hard budget on it says "Over budget" and plays the refusal sound instead of doing nothing after you confirm, and with the hard budget off it asks "Place it anyway?" before going over, like a catalogue buy ([#581](https://github.com/ch-bas/threejs-sims-house-builder/issues/581))
+- Every template now has a front door and windows, so in EXPLORE you can walk out of the house onto the lot ([#570](https://github.com/ch-bas/threejs-sims-house-builder/issues/570))
+- Template wardrobes and the Studio and Two-Story kitchens face into the room instead of the wall or the stove ([#575](https://github.com/ch-bas/threejs-sims-house-builder/issues/575))
+- Applying a theme no longer paints pools and ponds grey or trees, hedges and plants blue or orange: water, foliage, flowers, stepping stones and pendant-light shades keep their colours ([#597](https://github.com/ch-bas/threejs-sims-house-builder/issues/597))
+- The over-budget question and Surprise me no longer count the porch door of older saves, so they agree with the header's spending ([#600](https://github.com/ch-bas/threejs-sims-house-builder/issues/600))
+- Arrange leaves paintings, mirrors, clocks, shelves and curtains on their wall and stairs where their stairwell is, instead of packing them into the room ([#577](https://github.com/ch-bas/threejs-sims-house-builder/issues/577))
+- Arrange keeps furniture off the porch, out of the stairwell hole on the floor above the stairs and clear of interior walls ([#577](https://github.com/ch-bas/threejs-sims-house-builder/issues/577))
+- A chair, armchair or bench standing inside a dresser, nightstand, coffee table or counter is flagged as a collision; seats still tuck under desks and tables when their seat clears the tabletop ([#606](https://github.com/ch-bas/threejs-sims-house-builder/issues/606))
+- A zone drawn wall to wall on a floor whose size isn't a multiple of 10 cm ends at the wall instead of 5 cm past it, and renaming or recolouring it no longer shrinks it ([#618](https://github.com/ch-bas/threejs-sims-house-builder/issues/618))
+- On a low storey such as a 1.2 m loft, paintings, mirrors, clocks, wall shelves and curtains hang lower, and get shorter if they must, instead of poking through the ceiling; collisions test them where they are drawn ([#610](https://github.com/ch-bas/threejs-sims-house-builder/issues/610))
+- A saved set added on an upper floor leaves its garden pieces out instead of floating trees and benches beside the house, and a set made only of garden pieces says they go on the ground floor ([#591](https://github.com/ch-bas/threejs-sims-house-builder/issues/591))
+- A winder stair's stairwell is the same shape everywhere: the hole in the floor above, where furniture may not stand and where you can't walk in the walkthrough now match, on every storey height, instead of leaving a walkable, furnishable hole under a tall storey or flagging a cabinet on solid floor under a 3 m one. A winder against a wall no longer cuts a whole box out of the floor above ([#572](https://github.com/ch-bas/threejs-sims-house-builder/issues/572))
+- Interior walls no longer run through the recessed porch: a room stamp or a drawn wall that crosses it stops at its edge, either side of the recess, and one wholly inside it isn't added ([#614](https://github.com/ch-bas/threejs-sims-house-builder/issues/614))
+- On a hill where the porch opens onto an upper storey, the walkthrough no longer stops you at an invisible wall in the basement under the porch ([#586](https://github.com/ch-bas/threejs-sims-house-builder/issues/586))
+- Turning the phone while dragging an item cancels the drag and puts the item back, instead of dropping it far from your finger, often outside the house ([#677](https://github.com/ch-bas/threejs-sims-house-builder/issues/677))
+- A locked sofa keeps its shape: Mirror and the Standard/L/U choice are greyed out with "unlock to" tips, like the size sliders, instead of Mirror doing nothing and the shape changing anyway ([#636](https://github.com/ch-bas/threejs-sims-house-builder/issues/636))
+- The width, depth and height sliders reach a tall item's own size, so the first nudge no longer shrinks a 4.5 m Pine Tree, a 3.8 m Oak Tree or a 3.2 m Lamppost to 3 m ([#547](https://github.com/ch-bas/threejs-sims-house-builder/issues/547))
+- Rotating a selection of windows or doors on one wall (or a whole room with its openings) no longer stacks them on one spot: openings stay on their walls while the furniture turns ([#583](https://github.com/ch-bas/threejs-sims-house-builder/issues/583))
+- Rotating a selection that cannot move, and clicking the theme that is already applied, no longer add an Undo step that changes nothing ([#598](https://github.com/ch-bas/threejs-sims-house-builder/issues/598))
+- A pasted, Surprise or set item with an invalid position is refused instead of making the saved house unreadable, which used to open the default lot on the next visit ([#593](https://github.com/ch-bas/threejs-sims-house-builder/issues/593))
+- An imported or shared house holding an item of type "constructor" (or another built-in name) no longer crashes the editor, and a house that crashes the editor is never saved over the last good one, so a reload opens your house instead of crashing again ([#568](https://github.com/ch-bas/threejs-sims-house-builder/issues/568))
+- Garden items (trees, fences, benches and the like) in an imported file, a share link or a saved library entry that carry no category are recognised as garden items again, instead of turning red for being outside the house and blocking walkers ([#662](https://github.com/ch-bas/threejs-sims-house-builder/issues/662))
+- In EXPLORE you can no longer sit on a seat behind a wall or a partition, or on an indoor sofa from the lawn outside, and a seated walker only turns to a TV in the same room ([#566](https://github.com/ch-bas/threejs-sims-house-builder/issues/566))
+- You and the walkers sit at the same height on the same sofa, chair or bench, and a resized seat raises you both ([#623](https://github.com/ch-bas/threejs-sims-house-builder/issues/623))
+- Camera cones no longer turn red for furniture or walkers behind a wall or a partition ([#590](https://github.com/ch-bas/threejs-sims-house-builder/issues/590))
+- Camera cones on another storey no longer show through floors and ceilings, and while walking they hide with their storey ([#552](https://github.com/ch-bas/threejs-sims-house-builder/issues/552))
+- On a touch walk, typing in a search field no longer leaves EXPLORE on Escape, sits you down on E, or switches off the walking stick ([#558](https://github.com/ch-bas/threejs-sims-house-builder/issues/558))
+- EXPLORE no longer edits the house: the Up/Cut/Down walls pill is switched off (the walls stay up while walking), and Surprise me, Add floor, the side panels' Arrange, Clear floor, Lock all, Import, Templates, Library loads, themes and the Build and Buy tabs are disabled there with a note saying why; the exports, time of day and weather still work ([#643](https://github.com/ch-bas/threejs-sims-house-builder/issues/643))
+
+## [1.23.0] - 2026-10-25
+
+The **UX polish & accessibility** milestone: readable panels, screen-reader names and keyboard tabs, reduced motion, a 2D switch on every screen, and a proper attic ceiling.
+
+### Added
+- **Reduce motion:** with the system's "reduce motion" setting on, rain and snow hang still, walkers stand where they appear, camera cones stop sweeping, and the camera stops without gliding (and sits down or stands up in one step in walkthrough) ([#436](https://github.com/ch-bas/threejs-sims-house-builder/issues/436))
+- A **2D** switch at the head of the walls pill, in place of its "Walls" caption, shows the floor plan and goes back to 3D at every screen size, so a tablet without a keyboard can reach the plan; phones keep it in the dock's ⋯ tray ([#526](https://github.com/ch-bas/threejs-sims-house-builder/issues/526))
+
+### Changed
+- The glass panels are darker, so their labels, prices, highlighted and hovered tools, the Demolish button and the panels toggle stay readable over the grass, the sky and white walls (at least 4.5:1, up from as low as 1.5:1) ([#432](https://github.com/ch-bas/threejs-sims-house-builder/issues/432))
+- One spelling and one unit format across the app: "colour", "catalogue" and "metres", lengths always written with a space before the unit ("2.5 m", "0.50 m") in the header, hover card, resize panel, room stamp and 2D plan, and History ages written "3 min ago" so they can't be read as metres ([#438](https://github.com/ch-bas/threejs-sims-house-builder/issues/438))
+- The same figure has the same name everywhere: the mode panel's "Furniture Value" and the Statistics "Total cost" are now "Cost", and the catalogue strip's title uses the tool's own name ("Openings", "Tech") ([#438](https://github.com/ch-bas/threejs-sims-house-builder/issues/438))
+- The CSV inventory and schedule exports name their colour column "Colour" (was "Color") ([#438](https://github.com/ch-bas/threejs-sims-house-builder/issues/438))
+- Statistics says which figures cover the whole house and which floor the collision count is for; Room Settings, Catalogue and Placed Items headings match the size of the other cards ([#438](https://github.com/ch-bas/threejs-sims-house-builder/issues/438))
+- With the hard budget on, the Clear floor and Remove floor confirms say that the furniture sells back at 80% ([#534](https://github.com/ch-bas/threejs-sims-house-builder/issues/534))
+
+### Fixed
+- Walking the top storey, the ceiling overhead is plain plaster instead of the roof's shingled underside, and each dormer opens into the room so its window shows from inside ([#487](https://github.com/ch-bas/threejs-sims-house-builder/issues/487))
+- With the hard budget on, Clear floor, Remove floor and Surprise me now sell the furniture they take away back at 80%, like Demolish, instead of refunding it in full ([#534](https://github.com/ch-bas/threejs-sims-house-builder/issues/534))
+- Screen readers name every field in the side panels (wall and roof colours, search, filter, layout and floor names, room-shape sizes), and the 3D view and the floor plan are announced as pictures of the house ([#434](https://github.com/ch-bas/threejs-sims-house-builder/issues/434), [#436](https://github.com/ch-bas/threejs-sims-house-builder/issues/436))
+- Placed Items rows can be reached with Tab and selected with Enter or Space ([#434](https://github.com/ch-bas/threejs-sims-house-builder/issues/434))
+- The panels button says whether the panels are open, and the Build, Buy, Style and Manage tabs work as tabs: one Tab stop, arrow keys, Home and End ([#434](https://github.com/ch-bas/threejs-sims-house-builder/issues/434))
+
+## [1.22.0] - 2026-10-24
+
+The **Toolchain, CI & repo hygiene** milestone, plus people who dress up, sit down and get out of each other's way.
+
+### Added
+- The app has an icon, a link preview with a picture of the builder when you share it, and a theme colour for mobile browsers ([#443](https://github.com/ch-bas/threejs-sims-house-builder/issues/443))
+- A wrong address shows a page in the app's style with a way back to the builder, instead of the stock 404 ([#459](https://github.com/ch-bas/threejs-sims-house-builder/issues/459))
+- **Dressed people:** placed people and walkers wear a top, trousers or shorts and shoes, with a skin tone and a hair style (short, buzzed, long, bun or bald). A placed person's colour is their top; the rest follows from the item, so they keep their look
+- **Walkers sit down:** now and then a walker heads for a free chair, armchair, sofa or bench, turns, sits for a while (idle or chatting), then gets up and walks on
+- **Walkers do things:** at a waypoint they sometimes dance, reach for something or pick something up instead of just standing
+- **Walkers give way to each other:** a walker with someone just ahead stops, waits a moment, then carries on or heads somewhere else
+
+### Changed
+- The browser tab, prints and the blueprint name the app "Three.js Sims-like House Builder" instead of "3D Room Organizer" and "Standalone Room Organizer" ([#443](https://github.com/ch-bas/threejs-sims-house-builder/issues/443))
+- The README is shorter and links to the wiki; the module layout and design notes moved to `docs/`, and the contributor docs list every CI check ([#457](https://github.com/ch-bas/threejs-sims-house-builder/issues/457), [#440](https://github.com/ch-bas/threejs-sims-house-builder/issues/440))
+- `people.glb` carries seven more clips from the same CC0 library (about 730 KB, was 420 KB)
+
+### Fixed
+- Print and blueprint popups no longer rely on inline scripts, and can't reach back into the editor ([#445](https://github.com/ch-bas/threejs-sims-house-builder/issues/445), [#455](https://github.com/ch-bas/threejs-sims-house-builder/issues/455))
+
+### Security
+- The site now ships a Content-Security-Policy: only the app's own scripts run, nothing loads from other sites ([#445](https://github.com/ch-bas/threejs-sims-house-builder/issues/445))
+- Production dependencies have no known high or critical advisories, and CI now checks that on every push ([#449](https://github.com/ch-bas/threejs-sims-house-builder/issues/449))
+
+### Developer
+- ESLint 10 on a flat config with the same rules, TypeScript 6, and current Next and three.js patch releases ([#449](https://github.com/ch-bas/threejs-sims-house-builder/issues/449), [#441](https://github.com/ch-bas/threejs-sims-house-builder/issues/441))
+- One CI workflow: the checks run once per push, the site deploys only the newest commit on main, and a release is created only after the checks pass, on the commit that bumped the version ([#447](https://github.com/ch-bas/threejs-sims-house-builder/issues/447))
+- Shared helpers exist once, dead exports are gone, and tests cover the catalogue, the builder registry, the CSV formula guard and HTML escaping ([#451](https://github.com/ch-bas/threejs-sims-house-builder/issues/451), [#453](https://github.com/ch-bas/threejs-sims-house-builder/issues/453), [#455](https://github.com/ch-bas/threejs-sims-house-builder/issues/455))
+- `npm start` serves the static build; Node 22.22.2 or later ([#440](https://github.com/ch-bas/threejs-sims-house-builder/issues/440), [#459](https://github.com/ch-bas/threejs-sims-house-builder/issues/459))
+
+## [1.21.0] - 2026-10-24
+
+The **Gameplay & delight** milestone: walk through the whole house, place things the way you'd expect, play with a real budget, and get credit only for what you build.
+
+### Added
+- **Walk the whole house:** climb the stairs, walk out of the front door onto the lot and round the street, and change floors with PgUp/PgDn while walking. You arrive just inside the entrance; **E** sits you on a chair, sofa or bed facing the TV; **[** / **]** change the time of day as you walk ([#446](https://github.com/ch-bas/threejs-sims-house-builder/issues/446), [#463](https://github.com/ch-bas/threejs-sims-house-builder/issues/463))
+- **Walkthrough on phones and tablets:** drag to look, a thumb stick to walk, and buttons to sit and leave
+- **A walk HUD** that says how to look around, walk, change floors and leave; leaving returns to the mode you came from ([#454](https://github.com/ch-bas/threejs-sims-house-builder/issues/454))
+- **Placement preview:** clicking or tapping a catalogue tile picks the item up — a see-through copy follows your pointer or finger, red where it would collide, and snaps to walls for doors and windows. Click or tap to place, R to turn, Escape to cancel ([#463](https://github.com/ch-bas/threejs-sims-house-builder/issues/463))
+- **Hard budget (optional):** greys out what you can't afford and refunds 80% when you demolish; switch it on under the funds readout ([#463](https://github.com/ch-bas/threejs-sims-house-builder/issues/463))
+- Straight/winder switch and lead-in for stairs, and a sill height for windows, in the item editor ([#458](https://github.com/ch-bas/threejs-sims-house-builder/issues/458))
+- A short "refused" sound when something can't be done
+
+### Changed
+- **Walkers find their way:** they walk around furniture, partitions and stairs, use doors between rooms and stop to face furniture ([#452](https://github.com/ch-bas/threejs-sims-house-builder/issues/452))
+- **Achievements are earned, not inherited:** loading a template, a saved or shared house, a restore point or an import no longer unlocks anything; adding to a loaded house still earns what you add ([#450](https://github.com/ch-bas/threejs-sims-house-builder/issues/450))
+- **Furniture sets land in free space** instead of on top of the sofa ([#456](https://github.com/ch-bas/threejs-sims-house-builder/issues/456))
+- **Surprise me keeps the structure:** doors, windows, stairs and outdoor items stay, and the furniture is fitted around them ([#448](https://github.com/ch-bas/threejs-sims-house-builder/issues/448))
+- Achievement toasts no longer cover the mode buttons, and show one at a time ([#461](https://github.com/ch-bas/threejs-sims-house-builder/issues/461))
+- Every action plays its sound exactly once, including group rotate, duplicate and delete ([#460](https://github.com/ch-bas/threejs-sims-house-builder/issues/460))
+- Floor coverage in Statistics no longer counts doors, windows, wall decor or items standing on tables ([#462](https://github.com/ch-bas/threejs-sims-house-builder/issues/462))
+
+## [1.20.0] - 2026-10-23
+
+The **2D plan & export** milestone: a 2D plan that shows the whole lot, prints you can choose, CAD files that open in CAD, and exports of the whole building.
+
+### Added
+- **Print options:** paper (A4, A3, Letter), orientation, a fixed scale or the largest that fits, leaving out far outdoor items, every floor one per page (lined up page to page), and an optional item schedule ([#435](https://github.com/ch-bas/threejs-sims-house-builder/issues/435), [#405](https://github.com/ch-bas/threejs-sims-house-builder/issues/405), [#424](https://github.com/ch-bas/threejs-sims-house-builder/issues/424))
+- **Whole-building exports:** "SVG · all floors" and "DXF · all floors" for houses with more than one floor ([#405](https://github.com/ch-bas/threejs-sims-house-builder/issues/405))
+- **Richer plans:** SVG and DXF now carry a north arrow, room and wall dimensions, Wi-Fi and camera coverage, and the SVG an item schedule ([#420](https://github.com/ch-bas/threejs-sims-house-builder/issues/420), [#424](https://github.com/ch-bas/threejs-sims-house-builder/issues/424))
+- **Schedule CSV:** items grouped per floor with quantities and totals; the inventory CSV adds position, rotation, mirrored, locked and zone, and opens cleanly in Excel ([#430](https://github.com/ch-bas/threejs-sims-house-builder/issues/430))
+- A status chip while drawing zones in 2D; Escape or leaving 2D ends it ([#439](https://github.com/ch-bas/threejs-sims-house-builder/issues/439))
+
+### Changed
+- **The 2D plan shows the whole lot,** outdoor items included, beside the HUD instead of under it, so nothing is hidden or unclickable. Items very far out appear as markers at the edge with their distance; click one to select it ([#381](https://github.com/ch-bas/threejs-sims-house-builder/issues/381))
+- **The GLB export is the whole building:** every storey, the roof and every wall, with named parts, whatever the view shows ([#373](https://github.com/ch-bas/threejs-sims-house-builder/issues/373))
+- Every download uses one naming rule, keeps names in any alphabet (e.g. `дом-мечты.glb`) and strips anything unsafe ([#427](https://github.com/ch-bas/threejs-sims-house-builder/issues/427))
+- The 3D-only controls are disabled in 2D instead of doing nothing ([#444](https://github.com/ch-bas/threejs-sims-house-builder/issues/444))
+
+### Fixed
+- **The floor-plan image often didn't appear in 3D** after uploading, undoing or replacing it ([#521](https://github.com/ch-bas/threejs-sims-house-builder/issues/521))
+- **DXF files now open in CAD software:** valid AutoCAD 2000 structure, checked with three independent readers ([#397](https://github.com/ch-bas/threejs-sims-house-builder/issues/397))
+- Mirrored doors swing on the correct side in SVG and DXF ([#386](https://github.com/ch-bas/threejs-sims-house-builder/issues/386))
+- The blueprint draws outdoor items, and lists items too far out to draw instead of shrinking the house ([#377](https://github.com/ch-bas/threejs-sims-house-builder/issues/377))
+- Plan labels stay upright, wall cameras no longer widen the sheet, and cameras without a set range show their default cone in 2D ([#401](https://github.com/ch-bas/threejs-sims-house-builder/issues/401))
+- Dragging on the 2D plan no longer selects text across the page ([#442](https://github.com/ch-bas/threejs-sims-house-builder/issues/442))
+- Zone names on the minimap no longer render at full size ([#433](https://github.com/ch-bas/threejs-sims-house-builder/issues/433))
+- Screenshot PNG works in 2D, and blueprint Print works on an empty floor ([#391](https://github.com/ch-bas/threejs-sims-house-builder/issues/391), [#437](https://github.com/ch-bas/threejs-sims-house-builder/issues/437))
+- A long house name no longer silently changes the print scale
+
+## [1.19.0] - 2026-10-22
+
+**Phones and tablets, rebuilt.** On a phone the controls used to cover most of the screen. Now the house fills 60–80% of it.
+
+### Changed
+- **A slim dock instead of stacked panels.** On phones the tools sit in a bar along the bottom edge:
+  - one row of tool chips;
+  - a catalog row that scrolls sideways, with each item's name and price on the tile;
+  - a mode bar with Undo, Redo, Explore / Design / Furnish and a **⋯** tray for everything else, including a 2D / 3D switch.
+
+  Every control is at least 40 px, and the layout respects the iPhone notch and home bar ([#395](https://github.com/ch-bas/threejs-sims-house-builder/issues/395), [#423](https://github.com/ch-bas/threejs-sims-house-builder/issues/423), [#426](https://github.com/ch-bas/threejs-sims-house-builder/issues/426))
+- **The house is framed where you can see it.** On load and when you tap Fit, the camera fits the whole house, roof included, into the space the controls leave free. It re-frames when you rotate the phone, unless you have moved the camera yourself. The 2D plan fits above the dock too.
+- **The item editor is a bottom sheet on phones**, so the item you're editing stays visible above it. Swipe it up for sizes and colours. Undo stays reachable while it's open.
+- **Notifications show one at a time** at the top and never cover the sheet ([#419](https://github.com/ch-bas/threejs-sims-house-builder/issues/419))
+- **Landscape phones work:**
+  - the welcome dialog can be closed;
+  - nothing runs off screen;
+  - the wall Paint and Room Stamp panels open as a side column, so the house stays in view ([#307](https://github.com/ch-bas/threejs-sims-house-builder/issues/307))
+- Touch screens get touch tips in the welcome dialog, labelled camera buttons (Orbit, Pan, In, Out, Fit), and "Tap" instead of "Click" in hints ([#429](https://github.com/ch-bas/threejs-sims-house-builder/issues/429), [#423](https://github.com/ch-bas/threejs-sims-house-builder/issues/423))
+- Phones render at a slightly lower resolution for smoother orbiting.
+
+### Fixed
+- **"Save failed" and "Changed in another tab" were hidden on every screen up to 1100 px wide**, so a tablet or phone could stop saving without telling you. They now show everywhere, with the advice readable on touch screens ([#385](https://github.com/ch-bas/threejs-sims-house-builder/issues/385))
+- The minimap was hidden behind the item editor; it now moves aside, and it's compact on phones ([#390](https://github.com/ch-bas/threejs-sims-house-builder/issues/390), [#308](https://github.com/ch-bas/threejs-sims-house-builder/issues/308))
+- Pinching with a finger on furniture zooms instead of dragging the furniture.
+- A drag released over the controls is cancelled, and the item goes back where it was. Before, it landed far outside the house ([#511](https://github.com/ch-bas/threejs-sims-house-builder/issues/511))
+- The camera no longer drifts while you drag an item by touch.
+- Leaving the walkthrough puts the camera back where it was.
+- On desktop, a wall-tool column that's too tall keeps the build tools pinned in view.
+
+## [1.18.0] - 2026-10-21
+
+The **Performance & engine** milestone, second wave: a lighter engine download, an editor that redraws only what changed, and loading that fails cleanly instead of looping.
+
+### Changed
+- **Smaller download:** the 3D engine now ships only the parts of Three.js the app uses, about 28 KB lighter gzipped ([#411](https://github.com/ch-bas/threejs-sims-house-builder/issues/411))
+- **Edits stay light with the side panel around:** moving, nudging or recolouring an item no longer redraws the side panel, the bottom bar or the catalog. A drag end now costs about a fifth of the work it did, and the "Saved" indicator updates on its own ([#3](https://github.com/ch-bas/threejs-sims-house-builder/issues/3))
+- **Shorter share links:** positions are rounded to the millimetre, so links for freely placed houses are 17–46% shorter and a 300-item house fits again. Rounding never moves an item into a wall or another item ([#192](https://github.com/ch-bas/threejs-sims-house-builder/issues/192))
+- Add `?debug` to the address to see live renderer counters (draw calls, triangles, textures, programs) ([#192](https://github.com/ch-bas/threejs-sims-house-builder/issues/192))
+
+### Fixed
+- Sun shadows: no more speckles on sunlit walls, and no false shadow on the ground beyond the road ([#187](https://github.com/ch-bas/threejs-sims-house-builder/issues/187))
+- If part of the app keeps failing to load (for example right after an update), the page now stops on "Couldn't load the app" with a Reload button, instead of reloading over and over ([#499](https://github.com/ch-bas/threejs-sims-house-builder/issues/499))
+- A drag interrupted mid-press no longer turns the rest of the gesture into a camera spin
+
+## [1.17.0] - 2026-10-20
+
+The **Performance & engine** milestone, first wave: edits rebuild only what changed, the scenery draws in far fewer calls, and the app loads faster with nothing fetched from outside.
+
+### Changed
+- **Editing furniture is much lighter:** moving, rotating, mirroring or locking an item moves its existing model instead of rebuilding every item on the floor. On a 150-item floor a rotate shows in about half the time ([#404](https://github.com/ch-bas/threejs-sims-house-builder/issues/404))
+- Switching floors keeps the roof built instead of rebuilding it and every dormer; changing an item's colour or position no longer redraws every label, Wi-Fi ring and camera cone ([#283](https://github.com/ch-bas/threejs-sims-house-builder/issues/283), [#409](https://github.com/ch-bas/threejs-sims-house-builder/issues/409), [#398](https://github.com/ch-bas/threejs-sims-house-builder/issues/398))
+- The trees around the lot draw in 13 pieces instead of 134, and placed people share one copy of the model: hovering over a person is instant, and furniture edits near them no longer re-upload it ([#407](https://github.com/ch-bas/threejs-sims-house-builder/issues/407), [#284](https://github.com/ch-bas/threejs-sims-house-builder/issues/284))
+- Walkers standing still no longer redraw the shadows every frame ([#400](https://github.com/ch-bas/threejs-sims-house-builder/issues/400))
+- The time-of-day cycle and typing in the catalog search no longer re-render the whole editor ([#148](https://github.com/ch-bas/threejs-sims-house-builder/issues/148), [#3](https://github.com/ch-bas/threejs-sims-house-builder/issues/3))
+- **Faster loading:** the 3D engine downloads alongside the editor instead of after it, the fonts are served with the app (no request to Google Fonts), and the drop-down menus are native controls, about 29 KB lighter ([#413](https://github.com/ch-bas/threejs-sims-house-builder/issues/413), [#417](https://github.com/ch-bas/threejs-sims-house-builder/issues/417), [#415](https://github.com/ch-bas/threejs-sims-house-builder/issues/415))
+
+### Fixed
+- Typing a long house name quickly could crash the editor with "Maximum update depth exceeded" ([#480](https://github.com/ch-bas/threejs-sims-house-builder/issues/480))
+- When Google Fonts was blocked, the page reloaded itself once and took several seconds to appear ([#417](https://github.com/ch-bas/threejs-sims-house-builder/issues/417))
+- On a slow connection, a nearly finished load could restart itself ([#413](https://github.com/ch-bas/threejs-sims-house-builder/issues/413))
+- Walkthrough keeps the same walking speed down to 10 frames per second, and Ctrl/Cmd/Alt shortcuts no longer walk you forward or leave a key stuck ([#421](https://github.com/ch-bas/threejs-sims-house-builder/issues/421))
+- A drag interrupted by another tab or by the people model loading no longer leaves the item tinted red or saves a stale position ([#404](https://github.com/ch-bas/threejs-sims-house-builder/issues/404))
+
+## [1.16.0] - 2026-10-08
+
+The **Rendering & lighting polish** milestone: real nights, a walkthrough you can stand inside, and furniture that looks like what it is.
+
+### Added
+- **Walkthrough feels like a house:** every wall and the roof stay up while you walk (your Up/Cut/Down choice comes back when you leave), lower storeys have a ceiling, and stairwells are lined up and down instead of opening onto the sky or the garden ([#359](https://github.com/ch-bas/threejs-sims-house-builder/issues/359))
+- **Lamps light the room at night** — floor lamps, table lamps, pendants and lampposts cast warm light, using a small fixed set of lights given to the lamps nearest you, so it stays fast with many lamps ([#215](https://github.com/ch-bas/threejs-sims-house-builder/issues/215), [#393](https://github.com/ch-bas/threejs-sims-house-builder/issues/393))
+
+### Fixed
+- Nights are actually dark: the sky fill, ambient and environment fade through a smooth dusk instead of switching at 06:00 and 18:00, and weather darkens the night too ([#215](https://github.com/ch-bas/threejs-sims-house-builder/issues/215), [#375](https://github.com/ch-bas/threejs-sims-house-builder/issues/375))
+- Shadows: the sun's shadow now covers the whole lot, including tall houses and the street, and uses soft shadows that still exist in the current Three.js (the console warning on every load is gone) ([#282](https://github.com/ch-bas/threejs-sims-house-builder/issues/282), [#379](https://github.com/ch-bas/threejs-sims-house-builder/issues/379))
+- No stall at the first dusk with lamps placed ([#393](https://github.com/ch-bas/threejs-sims-house-builder/issues/393))
+- The traced floor plan in 3D now matches the 2D plan: correct colours, no smeared edges in "contain" fit, and the 3D relief lines up with the image ([#191](https://github.com/ch-bas/threejs-sims-house-builder/issues/191), [#227](https://github.com/ch-bas/threejs-sims-house-builder/issues/227), [#383](https://github.com/ch-bas/threejs-sims-house-builder/issues/383))
+- Every roof style is shingled properly — the hipped roof had none — at the same scale on any house size ([#211](https://github.com/ch-bas/threejs-sims-house-builder/issues/211))
+- The snap grid no longer flickers through the floor ([#371](https://github.com/ch-bas/threejs-sims-house-builder/issues/371))
+- Pools, bathtubs and ponds show their water; dormers are glazed from the street; the grey slab under windows is gone; paintings, lamp shades, bushes, stair rails, the TV, the pet and the Wi-Fi antennas fit their size ([#365](https://github.com/ch-bas/threejs-sims-house-builder/issues/365), [#369](https://github.com/ch-bas/threejs-sims-house-builder/issues/369), [#362](https://github.com/ch-bas/threejs-sims-house-builder/issues/362), [#388](https://github.com/ch-bas/threejs-sims-house-builder/issues/388), [#167](https://github.com/ch-bas/threejs-sims-house-builder/issues/167))
+- The pendant light hangs from the ceiling of its storey, whatever its height ([#470](https://github.com/ch-bas/threejs-sims-house-builder/issues/470), [#471](https://github.com/ch-bas/threejs-sims-house-builder/issues/471))
+- Painting a wall or drawing a partition no longer rebuilds every piece of furniture; closing the editor frees the whole 3D scene from GPU memory ([#214](https://github.com/ch-bas/threejs-sims-house-builder/issues/214), [#213](https://github.com/ch-bas/threejs-sims-house-builder/issues/213))
+- The zoom slider follows the real zoom (wheel included) and works with the arrow keys; dropping an item from the catalog plays its sound; colliding items fade completely; pages can be pinch-zoomed again on phones ([#167](https://github.com/ch-bas/threejs-sims-house-builder/issues/167))
+
+Mornings and afternoons are slightly darker than before (about 2–3 %), and a floor plan at low opacity now shows the floor colour instead of the lawn through the floor — both deliberate, to match the 2D plan and the time of day.
+
+## [1.15.0] - 2026-10-01
+
+The **Data safety & history** milestone: a house that can't be opened, a full or blocked browser storage, a crafted link or an old save can no longer cost you your work.
+
+### Added
+- **Recovered copies.** When a saved house can't be opened, or you start fresh from the error screen, a copy is kept and listed in Manage → Saved Layouts → History with Restore, Download and Delete. Two copies are kept; a blank lot is never kept; the error screen offers Reload first and only offers to start fresh if the crash comes back ([#336](https://github.com/ch-bas/threejs-sims-house-builder/issues/336))
+- Every house now has its own id, so two houses both called "My Home" keep separate restore points ([#342](https://github.com/ch-bas/threejs-sims-house-builder/issues/342))
+
+### Fixed
+- **A tiny share link could unpack to hundreds of megabytes**, and the failed save then deleted every restore point. Oversized links and JSON files are refused up front, and restore points are only ever given up for a real lack of space ([#332](https://github.com/ch-bas/threejs-sims-house-builder/issues/332))
+- Saved houses are repaired, not rejected: names, ids and colours are trimmed, far-away items are pulled in, and over-full floors are cut down (always keeping the porch door and wall), with the original kept aside — a house over the limits used to be replaced by a blank one on reload. Duplicate ids are fixed on load ([#332](https://github.com/ch-bas/threejs-sims-house-builder/issues/332), [#338](https://github.com/ch-bas/threejs-sims-house-builder/issues/338), [#350](https://github.com/ch-bas/threejs-sims-house-builder/issues/350))
+- When storage is full or blocked, the editor never writes over a saved house it couldn't back up, and the header says which it is: "Storage full" or "Saving is blocked in this browser" ([#472](https://github.com/ch-bas/threejs-sims-house-builder/issues/472), [#336](https://github.com/ch-bas/threejs-sims-house-builder/issues/336))
+- "Changed in another tab" no longer appears for the same house, and no longer bounces between tabs ([#334](https://github.com/ch-bas/threejs-sims-house-builder/issues/334))
+- Restore points: stable ids (a future-dated point could become "failed to restore"), houses with only zones, colours, size or roof changes are protected, and each load takes one restore point instead of two ([#344](https://github.com/ch-bas/threejs-sims-house-builder/issues/344), [#346](https://github.com/ch-bas/threejs-sims-house-builder/issues/346), [#352](https://github.com/ch-bas/threejs-sims-house-builder/issues/352))
+- Received houses, custom sets and saved-layout entries that can't be read are kept and counted instead of silently deleted; a corrupt library entry no longer crashes the Library panel; the received-houses board keeps 30 and says which one it dropped ([#340](https://github.com/ch-bas/threejs-sims-house-builder/issues/340), [#348](https://github.com/ch-bas/threejs-sims-house-builder/issues/348), [#355](https://github.com/ch-bas/threejs-sims-house-builder/issues/355))
+- The welcome dialog says "Welcome to the game"
+
+## [1.14.0] - 2026-10-01
+
+The **Editor integrity** milestone: 53 fixes from the September audit, so that what you see, undo, collide with and save is what you meant.
+
+### Added
+- A **View options** menu (eye icon in the mode panel) for the distance tool, item labels, the 2D cost heatmap, outdoor scenery, and snap to walls / snap to items — all of which existed but had no control ([#341](https://github.com/ch-bas/threejs-sims-house-builder/issues/341))
+- Wall drawing snaps onto an existing wall or the building edge for clean T-junctions ([#412](https://github.com/ch-bas/threejs-sims-house-builder/issues/412))
+- Loading a template, a saved house, a received house, a restore point or a JSON file asks before replacing a house with work in it, and says what it loaded ([#364](https://github.com/ch-bas/threejs-sims-house-builder/issues/364))
+- Inline naming and status messages instead of browser pop-ups for zones, furniture sets, share links and export failures ([#374](https://github.com/ch-bas/threejs-sims-house-builder/issues/374))
+
+### Fixed
+- **Undo right after reloading no longer replaces your house with the blank default** ([#354](https://github.com/ch-bas/threejs-sims-house-builder/issues/354)); each delete, duplicate, paste or placement is its own undo step ([#425](https://github.com/ch-bas/threejs-sims-house-builder/issues/425)), and cancelling a keyboard placement can't be undone back into existence ([#356](https://github.com/ch-bas/threejs-sims-house-builder/issues/356))
+- The Buy-tab catalog in the side panel was collapsed to a sliver ([#360](https://github.com/ch-bas/threejs-sims-house-builder/issues/360)); dragging "Winder Stairs" from it placed straight stairs ([#370](https://github.com/ch-bas/threejs-sims-house-builder/issues/370))
+- Resizing the window or rotating a phone while in 2D left the 3D view blank ([#363](https://github.com/ch-bas/threejs-sims-house-builder/issues/363))
+- Resizing the room moves doors, windows and cameras with their walls and keeps zones inside the house; typed sizes apply on Enter ([#431](https://github.com/ch-bas/threejs-sims-house-builder/issues/431))
+- The recessed entrance's back wall can't be deleted and its door can't wander off the porch ([#357](https://github.com/ch-bas/threejs-sims-house-builder/issues/357)); windows and doors settle on the walls either side of the porch opening ([#394](https://github.com/ch-bas/threejs-sims-house-builder/issues/394)); the porch shell appears exactly where its wall does ([#392](https://github.com/ch-bas/threejs-sims-house-builder/issues/392))
+- Furniture collides with interior walls ([#368](https://github.com/ch-bas/threejs-sims-house-builder/issues/368)) and with the stairwell hole on the floor above ([#372](https://github.com/ch-bas/threejs-sims-house-builder/issues/372)); pictures, mirrors and shelves hung over a sofa no longer read as collisions, and their selection outline frames the piece ([#376](https://github.com/ch-bas/threejs-sims-house-builder/issues/376)); outdoor items are allowed in the porch ([#406](https://github.com/ch-bas/threejs-sims-house-builder/issues/406)); lamps on side tables and armchairs at tables stack ([#403](https://github.com/ch-bas/threejs-sims-house-builder/issues/403))
+- A shortened staircase no longer cuts a bigger hole in the floor above ([#366](https://github.com/ch-bas/threejs-sims-house-builder/issues/366)); the walker and the walls agree about door gaps ([#399](https://github.com/ch-bas/threejs-sims-house-builder/issues/399))
+- Group drag works in both views ([#291](https://github.com/ch-bas/threejs-sims-house-builder/issues/291)); a cancelled touch drag puts items back instead of dropping them ([#292](https://github.com/ch-bas/threejs-sims-house-builder/issues/292)); items keep their grab point while dragged ([#292](https://github.com/ch-bas/threejs-sims-house-builder/issues/292))
+- Locks pin position, not existence: Delete, Demolish and the Placed Items ✕ all remove locked items ([#358](https://github.com/ch-bas/threejs-sims-house-builder/issues/358)); auto-organize leaves locked items where they are ([#389](https://github.com/ch-bas/threejs-sims-house-builder/issues/389)); resize and mirror respect locks ([#408](https://github.com/ch-bas/threejs-sims-house-builder/issues/408)); duplicates start unlocked ([#353](https://github.com/ch-bas/threejs-sims-house-builder/issues/353))
+- The selection outline no longer has a metre-wide click halo ([#333](https://github.com/ch-bas/threejs-sims-house-builder/issues/333)) or disappears after changing wall display ([#335](https://github.com/ch-bas/threejs-sims-house-builder/issues/335))
+- Wall-draw mode: clicks on furniture place wall points, Escape twice leaves the mode, and its hint is no longer hidden under the floor pill ([#349](https://github.com/ch-bas/threejs-sims-house-builder/issues/349), [#473](https://github.com/ch-bas/threejs-sims-house-builder/issues/473))
+- EXPLORE clears the selection and ignores edit shortcuts ([#339](https://github.com/ch-bas/threejs-sims-house-builder/issues/339)); a refused pointer lock says "Click again to look around" ([#351](https://github.com/ch-bas/threejs-sims-house-builder/issues/351)); Caps Lock no longer disables the F, M, G, W and P shortcuts ([#294](https://github.com/ch-bas/threejs-sims-house-builder/issues/294))
+- Cloning a floor no longer floats the garden in the sky ([#345](https://github.com/ch-bas/threejs-sims-house-builder/issues/345)); garden items can't be placed or pasted upstairs, with a reason on the tile ([#347](https://github.com/ch-bas/threejs-sims-house-builder/issues/347), [#293](https://github.com/ch-bas/threejs-sims-house-builder/issues/293)); custom furniture sets put doors on walls and garden pieces outdoors ([#384](https://github.com/ch-bas/threejs-sims-house-builder/issues/384)); snap-to-wall no longer pulls garden items into the house ([#380](https://github.com/ch-bas/threejs-sims-house-builder/issues/380))
+- The porch door no longer counts as furniture in items, cost or achievements ([#382](https://github.com/ch-bas/threejs-sims-house-builder/issues/382))
+- The item popover works with the side panel open ([#361](https://github.com/ch-bas/threejs-sims-house-builder/issues/361)); tabs open at the top ([#378](https://github.com/ch-bas/threejs-sims-house-builder/issues/378)); the Two-Story Home template is listed ([#343](https://github.com/ch-bas/threejs-sims-house-builder/issues/343)); rotation shows 0–359° ([#387](https://github.com/ch-bas/threejs-sims-house-builder/issues/387)); the hexagon room stamp fills its size ([#414](https://github.com/ch-bas/threejs-sims-house-builder/issues/414)); a roof colour no longer adds a roof ([#428](https://github.com/ch-bas/threejs-sims-house-builder/issues/428)); the History list refreshes in place ([#367](https://github.com/ch-bas/threejs-sims-house-builder/issues/367))
+- The editor no longer crashes where the browser blocks storage ([#396](https://github.com/ch-bas/threejs-sims-house-builder/issues/396))
+- No-op edits no longer create undo entries or autosaves ([#416](https://github.com/ch-bas/threejs-sims-house-builder/issues/416)); out-of-range values can no longer produce a save that fails to load ([#418](https://github.com/ch-bas/threejs-sims-house-builder/issues/418))
+
+### Internal
+- Shared helpers: `lib/safe-storage.ts`, `lib/mount-band.ts`, `lib/floor-keep-out.ts`, `lib/view-options.ts`, `lib/editor-notices.ts`; `hasCollisions` takes a `{ keepOut, interiorWalls }` context; one door-gap rule for walls and walker; `stairsDirection` retired (old saves still load) ([#410](https://github.com/ch-bas/threejs-sims-house-builder/issues/410), [#337](https://github.com/ch-bas/threejs-sims-house-builder/issues/337), [#422](https://github.com/ch-bas/threejs-sims-house-builder/issues/422))
+- Test suite: 820 → 1014 tests
+
+## [1.13.0] - 2026-09-30
+
+The **2D plan & export** milestone: the plan, minimap, blueprint, SVG and DXF now show what the 3D house is made of, and the exports fit their page.
+
+### Added
+- Stairs on the plan draw their treads and a climb arrow instead of a ladder icon, and the floor above shows the stairwell as a dashed "open below" void — the same hole the 3D slab cuts — on the plan, minimap, blueprint, SVG and DXF (new `STAIRWELL` layer) ([#290](https://github.com/ch-bas/threejs-sims-house-builder/issues/290))
+- The recessed entrance appears on the plan: the front wall breaks across the opening, the porch cheeks run back to its wall, the recess is outside (grass on screen, paper on the blueprint), the blueprint's floor area excludes it, and furniture dragged into the porch is flagged like furniture through a wall ([#285](https://github.com/ch-bas/threejs-sims-house-builder/issues/285))
+- The floor switcher shows each storey's height and the building's height to the eaves; the Site and Roof panels say they are shown in 3D only while the plan is up ([#289](https://github.com/ch-bas/threejs-sims-house-builder/issues/289))
+
+### Fixed
+- Wall-mounted items and low items no longer hide under the furniture around them on the plan: doors, windows, rugs and tabletop items draw and hit-test in a layer-aware order, with a little slack for thin wall marks ([#286](https://github.com/ch-bas/threejs-sims-house-builder/issues/286))
+- The SVG and print sheet now follow the plan's content: a tree or pool outside the walls is inside the sheet with the title, dimensions and scale bar clear of it ([#287](https://github.com/ch-bas/threejs-sims-house-builder/issues/287))
+- Print to scale picks portrait or landscape and goes up to 1:1000 so a whole lot fits an A4 page, keeps labels and line weights readable at every scale, and says "Not to scale" instead of claiming a scale it can't honour; DXF text with accents, symbols or percent signs opens correctly in CAD; the first blueprint print carries the tracing image ([#288](https://github.com/ch-bas/threejs-sims-house-builder/issues/288))
+- Starting to draw a zone or wall with the side panels open no longer closes the panels instead of drawing: the drawer steps out of the way while a draw mode is on ([#323](https://github.com/ch-bas/threejs-sims-house-builder/issues/323))
+
+### Internal
+- TypeScript `exactOptionalPropertyTypes` and `verbatimModuleSyntax` are on, and lint adds type-aware checks (floating promises, exhaustive switches, type-only imports) using the plugin the Next config already ships ([#162](https://github.com/ch-bas/threejs-sims-house-builder/issues/162))
+
+## [1.12.0] - 2026-09-30
+
+The **Gameplay & delight** milestone.
+
+### Added
+- DESIGN and FURNISH are real modes: DESIGN shows the structure tools (openings, walls) and the structure catalog and switches the sidebar to Build; FURNISH shows the furniture categories and switches to Buy. The tab only follows a mode change, so your own tab choice sticks ([#151](https://github.com/ch-bas/threejs-sims-house-builder/issues/151))
+- Persistent furniture groups: Group a selection and clicking any member selects the whole group in both views; Alt-click picks one member; drag, rotate, align, copy and delete all act on the group. Ungroup from the same chip ([#154](https://github.com/ch-bas/threejs-sims-house-builder/issues/154))
+- Room zones: draw a named, coloured rectangle on the 2D plan and the plan, blueprint, SVG export and Statistics panel report that room's cost, item count and area ([#155](https://github.com/ch-bas/threejs-sims-house-builder/issues/155))
+- Walkthrough collides with furniture and interior walls — sliding along sofas and partitions instead of walking through them, and passing through doorways ([#156](https://github.com/ch-bas/threejs-sims-house-builder/issues/156))
+- Keyboard placement: Tab to a catalog tile, Enter to place it at the room centre, arrows and R to position, Enter to confirm, Esc to cancel — with an on-screen hint ([#168](https://github.com/ch-bas/threejs-sims-house-builder/issues/168))
+- Weather: Clear, Rain or Snow over the lot from the Time of Day panel, with overcast lighting and a snow-white or rain-dark ground; nothing falls indoors ([#189](https://github.com/ch-bas/threejs-sims-house-builder/issues/189))
+- Paste-board: paste a friend's share link into the library to keep their house without replacing your own, with a thumbnail, and load it later (undoable) ([#190](https://github.com/ch-bas/threejs-sims-house-builder/issues/190))
+- Save a selection as a reusable custom furniture set, with its colours and sizes, placed from the Furniture Sets panel like the built-ins ([#302](https://github.com/ch-bas/threejs-sims-house-builder/issues/302))
+- Plan thumbnails on Library, Paste-board and History rows, plus a "what changed" line on restore points ([#303](https://github.com/ch-bas/threejs-sims-house-builder/issues/303))
+
+### Fixed
+- The multi-select chip and the placement hint no longer hide behind the header stats at narrow desktop widths
+
+## [1.11.0] - 2026-09-30
+
+The **Real Streets hardening** milestone: a street of neighbours, and the recessed entrance, low storeys and winder stairs made solid.
+
+### Added
+- A street of neighbours. *Street* continues the row of houses along the street in both directions; *Across the road* adds a facing row. Every house is different — width, storeys, roof style and colour, brick or render, windows, bays, dormers, doors, chimneys — but the street is seeded, so a design always shows the same one, and *Shuffle street* rolls a new one (undoable). Houses sit on the ground under them on a sloped site, and the immediate neighbours still match the house's eaves so a terrace reads as one ([#310](https://github.com/ch-bas/threejs-sims-house-builder/issues/310))
+- The Site panel says why a recessed entrance can't be built ("No storey at street level…") instead of showing it as on with nothing rendered, and the entrance and dormer Offset and Width fields clamp to what actually fits ([#281](https://github.com/ch-bas/threejs-sims-house-builder/issues/281))
+
+### Fixed
+- The entrance door no longer vanishes for good when the recess is momentarily unbuildable (typing a storey height passes through values too low for it) or its storey is removed; duplicating a floor no longer clones a stray porch wall and door onto the copy; "Clear floor" and "Surprise me" keep the door ([#273](https://github.com/ch-bas/threejs-sims-house-builder/issues/273))
+- A recessed entrance is no longer built underground when no storey is at street level — the default sloped-site preset used to bury the porch behind the earth face ([#274](https://github.com/ch-bas/threejs-sims-house-builder/issues/274))
+- The porch back wall reaches the soffit on every storey height; on storeys under 2.8 m there was an open slot from the street into the house ([#275](https://github.com/ch-bas/threejs-sims-house-builder/issues/275))
+- Porch reveals and soffit no longer flicker against the front wall, and the top step no longer sits in the plinth ([#276](https://github.com/ch-bas/threejs-sims-house-builder/issues/276))
+- On low storeys, doors, windows and cameras fit inside the wall like their holes do, and the walkthrough eye stays under the ceiling — on a 2 m storey the door used to poke through it ([#277](https://github.com/ch-bas/threejs-sims-house-builder/issues/277))
+- Winder stairs stay valid at any size: a stair too shallow for its fan lays out straight instead of producing floating or backwards treads and a broken hole in the floor above ([#278](https://github.com/ch-bas/threejs-sims-house-builder/issues/278))
+- Retyping the same terrain or entrance value no longer adds an undo entry, and an entrance keystroke no longer rebuilds every floor's furniture ([#279](https://github.com/ch-bas/threejs-sims-house-builder/issues/279))
+- Neighbour windows are sized to each facade and skip rows below the ground line ([#280](https://github.com/ch-bas/threejs-sims-house-builder/issues/280))
+
+## [1.10.1] - 2026-09-30
+
+The **Data safety & history** and **Responsive & mobile** milestones.
+
+### Added
+- A restore point is taken of the design on screen before anything replaces the whole house: opening a share link, loading a template or a saved layout, restoring from History, importing JSON, or adopting another tab's version. Opening a share link used to overwrite the stored house with no way back ([#298](https://github.com/ch-bas/threejs-sims-house-builder/issues/298))
+- A Redo button beside Undo — Redo previously had a shortcut but no button ([#301](https://github.com/ch-bas/threejs-sims-house-builder/issues/301))
+
+### Fixed
+- Restore points can no longer fill browser storage and stop autosave: a save that doesn't fit now drops the oldest restore points and retries, and the history has its own size limit ([#295](https://github.com/ch-bas/threejs-sims-house-builder/issues/295))
+- History rows show which house each restore point belongs to, and restoring puts the floor-plan image back only when it is the image that restore point was taken with — restoring one house while another's plan was loaded used to graft the wrong plan under it ([#296](https://github.com/ch-bas/threejs-sims-house-builder/issues/296))
+- Restore points keep being taken after the system clock is corrected backwards, unchanged designs no longer use up slots, and the history is no longer read in full after every autosave ([#297](https://github.com/ch-bas/threejs-sims-house-builder/issues/297))
+- Tablet widths (769–1100 px): the bottom panels no longer wrap, so the catalog stays on the bottom edge and the build tools no longer slide under the title ([#299](https://github.com/ch-bas/threejs-sims-house-builder/issues/299))
+- Mobile: the touch camera buttons no longer cover the catalog's next-page arrow ([#300](https://github.com/ch-bas/threejs-sims-house-builder/issues/300))
+- Mobile: Undo, Redo, snap, minimap, sounds, camera cones and walkers are reachable again — the whole row was hidden on phones. On desktop the same buttons are no longer squeezed below a comfortable size ([#301](https://github.com/ch-bas/threejs-sims-house-builder/issues/301))
+
+## [1.10.0] - 2026-09-29
+
+The **2D plan & export** milestone, animated people, and a round of robustness fixes.
+
+### Added
+- The 2D plan is fully interactive: click to select (Ctrl-click for multi-select), drag items with the same snapping, wall settling, lock-on-release and single undo entry as 3D, and drop catalog items straight onto the plan ([#219](https://github.com/ch-bas/threejs-sims-house-builder/issues/219), [#166](https://github.com/ch-bas/threejs-sims-house-builder/issues/166))
+- Export the plan as a scalable **SVG**, a CAD-ready **DXF** (layers for walls, openings, furniture and labels; opens in AutoCAD/LibreCAD/QCAD), or a **print-to-scale PDF** with a title block and a declared scale like 1:75 on A4 ([#230](https://github.com/ch-bas/threejs-sims-house-builder/issues/230))
+- Version history: automatic restore points (at most one per 5 minutes, plus one when the page closes) in a History section of the saved-layouts library. Restoring is undoable and keeps the current floor-plan image ([#231](https://github.com/ch-bas/threejs-sims-house-builder/issues/231))
+- People are a rigged, animated mannequin: placed people hold a relaxed idle stance, and walkers stroll, stop at each waypoint to idle or talk, and walk on, with the walk cycle matched to their speed. The model (Quaternius' Universal Animation Library, CC0, ~420 KB) is only downloaded once a layout contains a person or the walkers are on
+- A "Show walkers" toggle in the mode panel — the walking people existed but had no control to switch them on
+
+### Fixed
+- The 2D plan and printed blueprint draw the floor-plan tracing image like 3D does: 50% default opacity, the chosen cover/contain fit, and only on the ground floor ([#218](https://github.com/ch-bas/threejs-sims-house-builder/issues/218))
+- The camera pad and the auto-cycle time button no longer pretend to work in 2D view, the minimap renders sharply on retina displays, and the 2D view stays crisp after moving the window between monitors with different pixel densities ([#220](https://github.com/ch-bas/threejs-sims-house-builder/issues/220), [#226](https://github.com/ch-bas/threejs-sims-house-builder/issues/226))
+- Switching floors during walkthrough no longer snaps the first-person camera to an orbit pose, and movement keys no longer stick after Alt-Tabbing away mid-walk ([#216](https://github.com/ch-bas/threejs-sims-house-builder/issues/216))
+- A drag whose item was rebuilt mid-gesture (a cross-tab load, for example) aborts cleanly instead of committing stale positions ([#207](https://github.com/ch-bas/threejs-sims-house-builder/issues/207) follow-up)
+- Exporting a GLB with rigged people in the scene produces a valid file with the posed skeleton — it previously failed to open at all
+
+### Changed
+- The procedural person, now the fallback while the model loads or if it can't, is a jointed scale figure with a neck, shaped chest, hands and feet that swings its limbs to walk, instead of a floating ball over a tube with legs that slid up and down
+- A person's colour paints their body instead of their skin, and resizing a person scales it evenly
+
+## [1.9.1] - 2026-09-28
+
+### Fixed
+- Surprise me no longer stands paintings and mirrors loose in the room, where the thin raised panels looked like a second wall beside the real one; it hangs them flush on a wall, facing into the room ([#261](https://github.com/ch-bas/threejs-sims-house-builder/pull/261))
+
+## [1.9.0] - 2026-09-28
+
+Completes the **v1.9 — Real Streets** milestone: the realism track from [#195](https://github.com/ch-bas/threejs-sims-house-builder/issues/195).
+
+### Added
+- Per-storey heights: each floor can have its own floor-to-floor height (1–6 m) — a 2.5 m basement, a 1.1 m loft knee wall — set in Room Settings. Floors, walls, furniture, lamps, the roof, dragging, walkthrough, the camera and stairs all follow it; layouts without heights stack exactly as before ([#202](https://github.com/ch-bas/threejs-sims-house-builder/issues/202))
+- Sloped sites: street and garden ground levels in the new Site panel. The road, pavement, path and planting follow the slope, the lot is dug out around the house with earth faces over the buried facade, and the plinth reaches down to falling ground ([#202](https://github.com/ch-bas/threejs-sims-house-builder/issues/202))
+- Party-wall neighbours: terrace houses either side, sized off your eaves and roofed in your style, visible in every wall-display mode ([#202](https://github.com/ch-bas/threejs-sims-house-builder/issues/202), [#201](https://github.com/ch-bas/threejs-sims-house-builder/issues/201))
+- Roof dormers on gable and hipped slopes, with real openings — ribbon windows, casement pairs, French doors with side lights — frames, mullions, transoms, glass, head trim, an optional Juliet balcony, and a colour finish, managed from the Roof panel ([#203](https://github.com/ch-bas/threejs-sims-house-builder/issues/203))
+- A recessed entrance porch in the front wall on the storey at street level, with reveals, a soffit, steps up from the street, and an ordinary door on the wall across the back that follows the recess ([#204](https://github.com/ch-bas/threejs-sims-house-builder/issues/204))
+- Pavement frontage: the pavement and road run right up to the front wall, town-terrace style ([#204](https://github.com/ch-bas/threejs-sims-house-builder/issues/204))
+- Per-window sill height in the item panel; the wall cut and the window always agree ([#204](https://github.com/ch-bas/threejs-sims-house-builder/issues/204))
+- Winder stairs: a half-turn dog-leg (up flight, winder fan, return flight) with a Straight/Winder switch and an up-flight lead-in in the item panel, and a "Winder Stairs" catalogue entry ([#205](https://github.com/ch-bas/threejs-sims-house-builder/issues/205))
+
+### Changed
+- Stairwells are sized for 2.0 m headroom (UK Approved Document K) instead of cutting the stair's whole footprint out of the floor above; a winder's stairwell is an L over its turn and return flight ([#205](https://github.com/ch-bas/threejs-sims-house-builder/issues/205))
+
+### Fixed
+- With "Show all floors" and all walls up, the house renders solid instead of the other storeys turning see-through ([#201](https://github.com/ch-bas/threejs-sims-house-builder/issues/201))
+- Skirting boards stop at doorways, meet cleanly at the corners, and no longer flicker through the facade as a dark band ([#201](https://github.com/ch-bas/threejs-sims-house-builder/issues/201))
+- Dragging a catalogue tile always drops that exact item, even when two entries share a type ([#205](https://github.com/ch-bas/threejs-sims-house-builder/issues/205))
+
+## [1.8.15] - 2026-09-28
+
+Completes the **Editor integrity** milestone.
+
+### Fixed
+- Loading a layout from Saved Layouts can be undone with Ctrl+Z, like a template load — it used to wipe the undo history, so one click on an old entry lost the current design for good ([#222](https://github.com/ch-bas/threejs-sims-house-builder/issues/222))
+- Room Width/Depth inputs no longer resize the room mid-typing: clearing the field no longer snaps it to 5 m (which turned "12" into a 51 m, then 100 m room), values are kept within the fields' 2–20 m range, and blur/Enter restores or clamps ([#217](https://github.com/ch-bas/threejs-sims-house-builder/issues/217))
+- Undo, delete, rotate, nudge, duplicate, paste, floor-switch and 2D shortcuts pressed mid-drag wait for the drop instead of corrupting the drag and overwriting the undo ([#207](https://github.com/ch-bas/threejs-sims-house-builder/issues/207))
+- A wall removed by undo no longer stays "selected" in the paint panel, and imports, loads and floor switches clear stale wall selections and measurement points ([#224](https://github.com/ch-bas/threejs-sims-house-builder/issues/224))
+- The Coverage stat (and the blueprint's footprint) no longer counts outdoor items, which must sit outside the room ([#164](https://github.com/ch-bas/threejs-sims-house-builder/issues/164))
+- The wall paint panel no longer shows "All" as the target while an interior wall is selected, and only highlights a colour all four exterior walls actually share ([#221](https://github.com/ch-bas/threejs-sims-house-builder/issues/221))
+- "Roof It" can actually be earned — it unlocked on its own for every new profile; it now takes a roof of your own (a new style or colour), and the roof builder, Roof panel and achievement agree on what a colourless roof looks like ([#165](https://github.com/ch-bas/threejs-sims-house-builder/issues/165))
+- The shortcuts card, welcome tips and README match the real key bindings (P, Ctrl+C/V, Ctrl+Y, Backspace, Shift for 1 m nudges, EXPLORE mode, grid snap) ([#225](https://github.com/ch-bas/threejs-sims-house-builder/issues/225))
+- Keyboard and screen-reader users: the side panels drawer behaves as a modal dialog (focus moves in, Tab stays inside, Escape closes it and returns focus), the item popover takes focus when it opens and hands it back when it closes, stacked overlays never both react to one keypress, the game-mode switcher is announced as toggle buttons, and the smallest labels are larger ([#152](https://github.com/ch-bas/threejs-sims-house-builder/issues/152))
+
+### Changed
+- "Clear floor" and "Clear interior walls" ask for confirmation first, like "Surprise me"; "Clear interior walls" is disabled when there are none ([#223](https://github.com/ch-bas/threejs-sims-house-builder/issues/223))
+- "Open Plan" has its own achievement icon (🏷️) instead of sharing Window Watcher's
+
+## [1.8.14] - 2026-09-27
+
+### Fixed
+- Locks actually lock: every panel, the Placed Items list, and group rotate now refuse to move, rotate, or resize a locked item — enforced in the reducer so no caller can bypass it — and the affected controls grey out with an "unlock to…" hint instead of silently doing nothing (the Rotate chime no longer plays for a no-op) ([#209](https://github.com/ch-bas/threejs-sims-house-builder/issues/209))
+- Doors, windows, and cameras can no longer be stranded off their walls by typed X/Z coordinates, Align/Distribute, or a group rotate — they re-snap to the nearest wall like a drag does ([#210](https://github.com/ch-bas/threejs-sims-house-builder/issues/210))
+- A saved layout that loads but fails to apply is backed up before autosave can overwrite it, and a shared link that fails to apply falls back to your local save instead of the default layout ([#206](https://github.com/ch-bas/threejs-sims-house-builder/issues/206))
+- Saves from older versions, or with an unknown floor/wall pattern, no longer fail validation on the next load and lose the house ([#208](https://github.com/ch-bas/threejs-sims-house-builder/issues/208))
+- The 10 cm see-through slit above every default window is gone — the wall cut and the window now share one sill height ([#212](https://github.com/ch-bas/threejs-sims-house-builder/issues/212))
+- Wall Clock and Wall Shelf hang at wall height instead of sitting on the floor ([#163](https://github.com/ch-bas/threejs-sims-house-builder/issues/163))
+
+### Changed
+- Dependency updates: Next.js 15.5.26 (upstream security hardening), eslint-config-next 15.5.26, lucide-react 1.48, autoprefixer 10.6.1, @types/node 26.6.2
+
+## [1.8.13] - 2026-09-18
+
+### Added
+- Furniture clipboard: Ctrl+C copies the selection, Ctrl+V pastes it beside the original or onto another floor — arrangement preserved, wall items re-seated, pastes unlocked/selected and undoable in one step, with a Copy button on the multi-select badge ([#153](https://github.com/ch-bas/threejs-sims-house-builder/issues/153))
+- Share links compress with native deflate: a fully furnished 100-item house now encodes ~8× smaller and fits comfortably where it previously failed with "too large"; existing links keep working ([#147](https://github.com/ch-bas/threejs-sims-house-builder/issues/147))
+
+### Fixed
+- The item popover's "Centre" button no longer bypasses locks or strands doors/windows/cameras mid-room — it's disabled with an explanatory hint for locked and wall-mounted items ([#149](https://github.com/ch-bas/threejs-sims-house-builder/issues/149))
+- The cost heatmap weights cells by actual overlap instead of counting boundary-straddling items up to 4×, and its legend uses the same currency symbol as the rest of the app ([#150](https://github.com/ch-bas/threejs-sims-house-builder/issues/150))
+
+### Changed
+- The renderer uses a reversed depth buffer where the browser supports it, removing residual grazing-angle z-fighting on thin geometry ([#187](https://github.com/ch-bas/threejs-sims-house-builder/issues/187))
+
+## [1.8.12] - 2026-09-18
+
+### Fixed
+- The night sky's stars and moon are now real world-space objects instead of pixels in the stretched screen backdrop: stars render pixel-crisp at any resolution with true parallax when orbiting (and surround you in walkthrough mode), and the moon is a proper glowing disc with craters riding a low arc over the treeline ([#182](https://github.com/ch-bas/threejs-sims-house-builder/issues/182))
+
+## [1.8.11] - 2026-09-18
+
+### Added
+- The night sky has stars and a moon: a seeded starfield fades in as darkness deepens (twinkling gently while time auto-advances), and a glowing moon rises after dusk, crests at midnight, and sets before dawn ([#182](https://github.com/ch-bas/threejs-sims-house-builder/issues/182))
+
+## [1.8.10] - 2026-09-18
+
+### Fixed
+- A persistently broken deploy no longer reloads the tab forever: the error boundaries honor the one-shot reload guard and fall through to a recovery screen with a plain Reload button — never offering to reset your saved house for a deploy problem ([#143](https://github.com/ch-bas/threejs-sims-house-builder/issues/143))
+- Flush cameras flipped to face outside (and 180°-flipped doors) survive nudges, drag releases, and duplication instead of being reset to face inward ([#144](https://github.com/ch-bas/threejs-sims-house-builder/issues/144))
+- The night sky now darkens after dusk, is darkest around midnight, and lifts toward dawn — previously midnight was the brightest point of the night and dusk snapped to black ([#145](https://github.com/ch-bas/threejs-sims-house-builder/issues/145))
+- Small-bug roundup: stairwell floor holes are clamped inside the floor outline (no more corrupted geometry from edge-placed stairs), declining the over-budget confirmation no longer chimes or wipes the selection, oversized transparent floor plans no longer turn black, loading a saved or shared house no longer fires a burst of achievement toasts (while a returning player's first real achievement still toasts), a camera mounted above a door is no longer flagged as a collision, and upper-floor lamp glow sits at the right height ([#146](https://github.com/ch-bas/threejs-sims-house-builder/issues/146))
+
+### Changed
+- Dependencies refreshed: Three.js 0.169 → 0.186 (verified against the render-on-demand and walkthrough camera contracts), Next.js 15.5.25 clearing all `npm audit` advisories, and the GitHub Actions runtime majors ([#160](https://github.com/ch-bas/threejs-sims-house-builder/issues/160))
+
+### Infrastructure
+- Every pull request now runs the full quality gate (typecheck, lint, 267-test suite, production build) and `main` is protected — nothing merges without a green check ([#159](https://github.com/ch-bas/threejs-sims-house-builder/issues/159))
+- Supply-chain hardening: all workflow actions pinned to commit SHAs, the release job serialized with a working tag check, and weekly grouped Dependabot updates for npm and the actions themselves ([#161](https://github.com/ch-bas/threejs-sims-house-builder/issues/161))
+
+## [1.8.9] - 2026-09-14
+
+### Added
+- Security-camera coverage is now visible everywhere you plan it: the FOV wedge draws in the 2D plan view, and the printed blueprint includes camera wedges and Wi-Fi rings by default ([#134](https://github.com/ch-bas/threejs-sims-house-builder/issues/134))
+- The budget pushes back: purchases that would exceed it ask for confirmation before placing, and Surprise-me spends only what the building has left ([#136](https://github.com/ch-bas/threejs-sims-house-builder/issues/136))
+
+### Fixed
+- Exterior walls now cast and receive sun shadows like the roof and interior walls — dawn light no longer falls on furniture straight through the shell, and the house finally shadows its lawn. Cutaway wall flips refresh the static shadow map exactly once per flip, so orbiting stays cheap ([#132](https://github.com/ch-bas/threejs-sims-house-builder/issues/132))
+- A wall hidden by cutaway or walls-down takes its glowing selection outline with it instead of leaving a ghost rectangle floating over the open room ([#133](https://github.com/ch-bas/threejs-sims-house-builder/issues/133))
+- Furniture-set tiles the room can't hold are greyed out with a "Room too small" hint instead of silently doing nothing ([#135](https://github.com/ch-bas/threejs-sims-house-builder/issues/135))
+
+### Changed
+- Honest money labels: the mode panel shows "Furniture Value" (the number always was the current value, not cumulative spend), and the Big Spender achievement reads "Own over $10,000 of furniture" to match ([#136](https://github.com/ch-bas/threejs-sims-house-builder/issues/136))
+
+## [1.8.8] - 2026-09-03
+
+### Added
+- Editing the same house in two tabs is no longer a silent race: when another tab saves, a "Changed in another tab" notice appears with a one-click Load (undoable with Ctrl+Z) or dismiss ([#123](https://github.com/ch-bas/threejs-sims-house-builder/issues/123))
+
+### Changed
+- Test suite grew from 223 to 251: the door/window/camera snapping math, the Surprise-me generator, and every stamped room shape now have dedicated coverage ([#123](https://github.com/ch-bas/threejs-sims-house-builder/issues/123))
+
+## [1.8.7] - 2026-09-03
+
+### Fixed
+- Painting with an interior wall selected now colours that wall instead of silently repainting all four exterior walls; the precise X/Z inputs no longer fight your typing; the Templates select can re-apply the same template; the sidebar wall-pattern select gained the missing Siding option; the stamped hexagon is flat-top at full width; walls-down mode keeps the snap grid; the pet's collision box matches its mesh; ghosted furniture on inactive floors no longer steals clicks; library saves/deletes are quota-safe; plus assorted hygiene (sky-texture disposal, reducer purity, icon lookups) ([#122](https://github.com/ch-bas/threejs-sims-house-builder/issues/122))
+- Schema hardening round 3: imported/shared layouts can no longer smuggle absurd item dimensions, unknown sofa/stairs variants, out-of-range floor-plan opacity, or negative signal/vision ranges into the app ([#121](https://github.com/ch-bas/threejs-sims-house-builder/issues/121))
+
+## [1.8.6] - 2026-09-03
+
+### Fixed
+- The 2D plan view and printed blueprint now draw interior walls, show hidden exterior walls as dashed boundaries, and outline multi-select extras; the minimap renders at a usable scale instead of a ~10px blob and repaints when an uploaded floor plan finishes decoding; a broken floor-plan image can no longer abort the whole 2D paint ([#118](https://github.com/ch-bas/threejs-sims-house-builder/issues/118))
+- Collision flags are layer-aware: rugs under furniture, sofas flush beneath windows or cameras, tabletop items on desks, and chairs tucked under tables no longer read as collisions — while overlapping doors/windows on one wall still do. The shipped Living Room template no longer loads with items flagged red, and the Bedroom template's floor lamp no longer stands inside the wardrobe ([#120](https://github.com/ch-bas/threejs-sims-house-builder/issues/120))
+
+## [1.8.5] - 2026-09-02
+
+### Fixed
+- Item locks are now enforced everywhere: multi-select Delete spares locked items (and a locked primary no longer blocks deleting unlocked extras), group drag and align/distribute leave locked items in place, rotation skips them, and a real drag locks every dragged item instead of only the primary ([#115](https://github.com/ch-bas/threejs-sims-house-builder/issues/115))
+- Doors, windows, and cameras can no longer be torn off their walls: group-drag commits, arrow-key nudges, and Ctrl+D duplication all settle wall-mounted items back onto the nearest wall (duplicates of other items are clamped inside the room) ([#116](https://github.com/ch-bas/threejs-sims-house-builder/issues/116))
+- Ghost multi-selects eliminated: picking or adding an item now clears leftover multi-select extras everywhere, ctrl-clicking the primary reliably promotes another selected item, and selections no longer survive deletions, undo/redo, or removing the active floor ([#117](https://github.com/ch-bas/threejs-sims-house-builder/issues/117))
+- Scene staleness fixes: exterior wall cutouts rebuild when interior walls change (no more double-cut doors), a roof restyled in cutaway mode no longer pops in over the open interior, toggling NPCs off erases them immediately, and the floor-plan image cache survives multi-floor rebuilds instead of re-decoding on each ([#119](https://github.com/ch-bas/threejs-sims-house-builder/issues/119))
+- Furniture sets that would overlap themselves when squeezed into a small room are refused instead of stamped broken — intentional overlaps like the office computer on its desk still place fine ([#127](https://github.com/ch-bas/threejs-sims-house-builder/issues/127))
+- Auto-organize keeps items it can't pack at their original spot instead of stacking them in an overlapping pile at the room centre, and no longer pushes too-wide items through the wall ([#128](https://github.com/ch-bas/threejs-sims-house-builder/issues/128))
+- CI: the GitHub Pages deploy runs on Node 22 — the jsdom test environment introduced in 1.8.3 killed the Node 20 test worker, so releases 1.8.3 and 1.8.4 never reached the live site; this release ships them
+
+## [1.8.4] - 2026-09-02
+
+### Fixed
+- Typing an out-of-range room width/depth can no longer destroy the saved house: the reducer clamps the dimensions to schema-safe bounds, and any stored layout that exists but fails to load is backed up to a `-recovery` localStorage key before the fallback layout's autosave can overwrite it ([#113](https://github.com/ch-bas/threejs-sims-house-builder/issues/113))
+- Walkthrough mouse-look is no longer overwritten every frame: the render loop skips `OrbitControls.update()` (which has no `enabled` guard) while walkthrough is active, and exiting the mode always releases pointer lock ([#114](https://github.com/ch-bas/threejs-sims-house-builder/issues/114))
+- Patterned walls with a door or window — and patterned floors above a stairwell — now tile their texture at the same density as neighbouring surfaces instead of shrinking the pattern by the surface's size ([#125](https://github.com/ch-bas/threejs-sims-house-builder/issues/125))
+- Focus-on-selection now frames items on upper floors instead of diving the camera into the storey below ([#126](https://github.com/ch-bas/threejs-sims-house-builder/issues/126))
+
+## [1.8.3] - 2026-09-01
+
+### Fixed
+- Outdoor scatter (grass tufts, shrubs, flowers, road dashes, stepping stones) no longer blinks out of view when the camera pans — the instanced meshes now compute a bounding sphere covering their actual spread instead of culling at the world origin ([#104](https://github.com/ch-bas/threejs-sims-house-builder/issues/104))
+- "Surprise me" asks for confirmation before replacing a furnished floor instead of silently wiping it ([#105](https://github.com/ch-bas/threejs-sims-house-builder/issues/105))
+- Procedural texture caches (floor/wall patterns, roof shingles, item labels) are capped with a disposing LRU, so experimenting with colours no longer grows GPU memory for the whole session; redundant per-clone GPU re-uploads removed ([#106](https://github.com/ch-bas/threejs-sims-house-builder/issues/106))
+- Logic roundup: floor duplication can no longer produce colliding item ids, generated furniture sets keep a wall-thickness inset from exterior walls, long library save names no longer collide after slug truncation, and the redeploy watchdog waits 20s before reloading on slow connections ([#107](https://github.com/ch-bas/threejs-sims-house-builder/issues/107))
+
+## [1.8.2] - 2026-09-01
+
+### Fixed
+- The error boundary's "Reset saved layout" button now recovers instead of looping. After layout state moved into a module-level store (1.8.1), the soft reset kept the crash-causing layout in memory and re-crashed immediately; it now hard-reloads to re-baseline the store ([#102](https://github.com/ch-bas/threejs-sims-house-builder/issues/102))
+- Ground shadows no longer go stale or missing after changing the roof or toggling the outdoor scenery. Both effects now refresh the (static) shadow map like the others do ([#103](https://github.com/ch-bas/threejs-sims-house-builder/issues/103))
+
+## [1.8.1] - 2026-08-26
+
+### Fixed
+- Returning visitors no longer get stuck on a permanent "Loading the lot…" screen after a redeploy. The static export's hashed chunk URLs change each deploy, and a browser holding cached HTML (GitHub Pages caches it ~10 min) would 404 on the old chunks with no recovery; an inline head watchdog now reloads once to fetch fresh assets ([#100](https://github.com/ch-bas/threejs-sims-house-builder/issues/100))
+
+### Added
+- Landscape / short-viewport responsive layout — wide-but-short screens (landscape phones, short desktop windows) now compact the floating chrome instead of overflowing it off the bottom edge ([#98](https://github.com/ch-bas/threejs-sims-house-builder/issues/98))
+
+### Changed
+- Introduced a Zustand store for layout state as an incremental foundation: it reuses the existing reducer (so behavior is unchanged), and a few panels now subscribe to atomic slices via selectors. The remaining panels still read through React context and can migrate individually ([#3](https://github.com/ch-bas/threejs-sims-house-builder/issues/3))
+
+## [1.8.0] - 2026-08-13
+
+Three.js-focused audit: rendering-quality, GPU performance, and static-export hardening.
+
+### Performance
+- Render loop: the shadow map no longer recomputes every frame (only when a caster or the sun moves), the NPC animation loop only requests frames when an NPC actually moves, static room-shell meshes bake their matrix once, and hover/drag raycasts reuse a cached furniture list instead of rebuilding it per pointer move ([#95](https://github.com/ch-bas/threejs-sims-house-builder/issues/95))
+- Draw calls: the outdoor lot's high-count scatter (220 grass tufts, shrubs, flowers, road dashes, stepping stones) renders through `InstancedMesh` (hundreds of meshes → a handful of draw calls); loop-invariant geometries are hoisted and shared; procedural floor/wall/label/roof textures are cached and reused across rebuilds ([#96](https://github.com/ch-bas/threejs-sims-house-builder/issues/96))
+
+### Fixed
+- Rendering color management: roof-shingle and birch-bark CanvasTextures are tagged sRGB (they were rendering washed-out), and the UI overlays (camera vision cones, WiFi/CCTV range rings, measurement markers) bypass ACES tone mapping so they hit their intended colors; transparent signal rings no longer punch holes in each other ([#94](https://github.com/ch-bas/threejs-sims-house-builder/issues/94))
+- A stale-chunk 404 after a redeploy no longer dead-ends returning users — the error boundary reloads on `ChunkLoadError` instead of re-requesting the dead chunk in a loop ([#97](https://github.com/ch-bas/threejs-sims-house-builder/issues/97))
+- Outdoor ground layers no longer z-fight (the 1 mm stack was widened) ([#96](https://github.com/ch-bas/threejs-sims-house-builder/issues/96))
+- The WebGL context is recovered automatically after a GPU context loss instead of leaving a permanently blank canvas ([#95](https://github.com/ch-bas/threejs-sims-house-builder/issues/95))
+
+### Security
+- `floorPlanImage` is restricted to `data:image/` URLs, closing an outbound-fetch vector where a poisoned/imported layout could point it at an arbitrary URL ([#97](https://github.com/ch-bas/threejs-sims-house-builder/issues/97))
+
+### Changed
+- GLB export serializes only the furniture/structure subtree instead of the whole scene (lights, sky, grid, NPCs, and overlays are excluded); download object-URLs are revoked on a later tick to avoid truncating downloads ([#97](https://github.com/ch-bas/threejs-sims-house-builder/issues/97))
+- CI installs with `npm ci` for reproducible builds; `next` bumped to 15.5.23 ([#97](https://github.com/ch-bas/threejs-sims-house-builder/issues/97))
+
+## [1.7.0] - 2026-08-13
+
+Second batch of the second-round audit: geometry/interaction correctness, walkthrough fixes, schema hardening, and the project's first automated test suite.
+
+### Added
+- Test framework: Vitest with 158 unit tests covering the layout reducer, schema migration/validation, geometry/OBB collision, the share-URL codec, wall snapping, alignment, and achievements — enforced in CI ([#6](https://github.com/ch-bas/threejs-sims-house-builder/issues/6))
+
+### Fixed
+- 2D top-down view renders at the container size and device-pixel-ratio instead of a fixed 800×600, so it's no longer stretched or blurry ([#66](https://github.com/ch-bas/threejs-sims-house-builder/issues/66))
+- Selection outlines no longer go stale when toggling Show All Floors or editing the selected wall ([#75](https://github.com/ch-bas/threejs-sims-house-builder/issues/75))
+- Wall cutouts: an opening near a junction cuts only its own wall, overlapping cutouts no longer corrupt the wall mesh, and oversized openings clamp to the wall segment ([#61](https://github.com/ch-bas/threejs-sims-house-builder/issues/61))
+- Dragging a door or window to a different wall now re-orients it to that wall instead of keeping its old rotation ([#62](https://github.com/ch-bas/threejs-sims-house-builder/issues/62))
+- Geometry polish: interior-wall cameras seat on the cursor's side of the wall, hipped-roof faces are wound outward, the 2D and 3D grids align to the actual snap grid, and rotated stairs cut a matching (non-inflated) floor hole ([#63](https://github.com/ch-bas/threejs-sims-house-builder/issues/63))
+- Multi-select: group rotate orbits items about the selection centroid (rigidly) instead of spinning each in place, duplicate copies the whole selection, and the primary item can be Ctrl-deselected ([#69](https://github.com/ch-bas/threejs-sims-house-builder/issues/69))
+- Keyboard: Shift+R fine-rotation works again, and AltGr layouts can reach the `[` / `]` time-of-day shortcuts ([#76](https://github.com/ch-bas/threejs-sims-house-builder/issues/76))
+- Walkthrough mode: single-key shortcuts and canvas selection are suppressed while walking, floor-switching keeps pointer lock instead of teleporting, a second Escape exits, entering Live from 2D works, and the camera is clamped to the room footprint ([#67](https://github.com/ch-bas/threejs-sims-house-builder/issues/67))
+- Furniture sets and Surprise no longer drop items outside small rooms, and outdoor items no longer float mid-air when an upper floor is active ([#73](https://github.com/ch-bas/threejs-sims-house-builder/issues/73))
+- Roundup: JSON import clears the multi-selection, corrupt share links surface an error instead of silently loading the local layout, generated IDs no longer collide (and a room-shape stamp is a single undo), achievement thresholds/text/currency are corrected, the minimap no longer overlaps the corner pills, the welcome banner is a proper accessible dialog, and empty-name/PNG export edge cases are handled ([#78](https://github.com/ch-bas/threejs-sims-house-builder/issues/78))
+
+### Security
+- CSV inventory export now escapes leading formula characters (`=`, `+`, `-`, `@`), closing a spreadsheet formula-injection vector via item/floor names carried in shared layouts ([#72](https://github.com/ch-bas/threejs-sims-house-builder/issues/72))
+
+### Changed
+- Layout schema validation rejects non-positive room dimensions, unknown roof styles, floor counts over the limit, and non-boolean flag fields ([#77](https://github.com/ch-bas/threejs-sims-house-builder/issues/77))
+
+## [1.6.0] - 2026-08-11
+
+Correctness and robustness release from the second-round audit (issues [#58](https://github.com/ch-bas/threejs-sims-house-builder/issues/58)–[#74](https://github.com/ch-bas/threejs-sims-house-builder/issues/74)).
+
+### Added
+- Touch support: the canvas now uses pointer events, so tablets and phones can select and drag furniture; the touch mode toggle configures the correct one-/two-finger gestures ([#64](https://github.com/ch-bas/threejs-sims-house-builder/issues/64))
+- Error boundaries with a "Reset saved layout" recovery button, so a corrupt saved layout can no longer permanently white-screen the app ([#70](https://github.com/ch-bas/threejs-sims-house-builder/issues/70))
+
+### Fixed
+- Collision detection and the 2D top-down view now match the 3D scene at every rotation; previously both mirrored the rendered footprint, so rotated items showed wrong collision flags and flipped orientation in 2D ([#58](https://github.com/ch-bas/threejs-sims-house-builder/issues/58))
+- Doors and windows on the south and west walls no longer punch their cutout at the mirrored position ([#59](https://github.com/ch-bas/threejs-sims-house-builder/issues/59))
+- Doors and windows are no longer permanently flagged as colliding (they live inside the wall by design) ([#60](https://github.com/ch-bas/threejs-sims-house-builder/issues/60))
+- Clicking an item to select it no longer counts as a zero-distance drag — it no longer re-locks the item, blocks nudge/delete, or adds a spurious undo entry ([#65](https://github.com/ch-bas/threejs-sims-house-builder/issues/65))
+- Camera-pad zoom slider is no longer direction-inverted ([#68](https://github.com/ch-bas/threejs-sims-house-builder/issues/68))
+- Oversized floor-plan images are downscaled before saving, and failed saves (storage full) are reported honestly instead of showing "Saved" ([#71](https://github.com/ch-bas/threejs-sims-house-builder/issues/71))
+- Redo within the auto-commit debounce window no longer destroys a freshly-made edit ([#74](https://github.com/ch-bas/threejs-sims-house-builder/issues/74))
+
+## [1.5.0] - 2026-08-10
+
+Performance and internal-quality release completing the August 2026 code audit (issues [#32](https://github.com/ch-bas/threejs-sims-house-builder/issues/32), [#34](https://github.com/ch-bas/threejs-sims-house-builder/issues/34)–[#38](https://github.com/ch-bas/threejs-sims-house-builder/issues/38)).
+
+### Performance
+- Scene rebuilds are granular: selecting an item swaps only its outline instead of rebuilding every furniture mesh; item edits no longer rebuild walls, floors, procedural textures, interior walls, or lighting; overlay toggles leave furniture untouched ([#32](https://github.com/ch-bas/threejs-sims-house-builder/issues/32))
+- Camera-vision animation loop idles when no cones are in the scene; floor-plan images cache their decoded data instead of re-decoding per rebuild ([#32](https://github.com/ch-bas/threejs-sims-house-builder/issues/32))
+
+### Changed
+- ESLint now runs in CI with zero warnings tolerated; all 33 outstanding warnings resolved ([#34](https://github.com/ch-bas/threejs-sims-house-builder/issues/34))
+- `noUnusedLocals`/`noUnusedParameters` enabled; 13 dead symbols removed ([#35](https://github.com/ch-bas/threejs-sims-house-builder/issues/35))
+- Shared `material()` helper replaces ~135 repeated MeshStandardMaterial blocks in the mesh builders ([#36](https://github.com/ch-bas/threejs-sims-house-builder/issues/36))
+- Orchestrator split along its seams: drag fast-path, placement/snapping, and import/export moved into dedicated hooks; canvas event handling and base lights moved into the `three/` layer ([#37](https://github.com/ch-bas/threejs-sims-house-builder/issues/37))
+- Deduplicated UI widgets: shared colour-swatch picker, glass-inset token class, and slider-row component ([#38](https://github.com/ch-bas/threejs-sims-house-builder/issues/38))
+
+## [1.4.0] - 2026-08-05
+
+Bug-fix release resolving all twelve confirmed findings from the August 2026 code audit.
+
+### Fixed
+- Undo immediately after page load no longer reverts the house to the blank default and auto-saves the wipe ([#21](https://github.com/ch-bas/threejs-sims-house-builder/issues/21))
+- Opening a share link no longer overwrites the locally saved house ([#22](https://github.com/ch-bas/threejs-sims-house-builder/issues/22))
+- Achievements re-enabled — unlock detection had been silently disabled since the architecture refactor ([#23](https://github.com/ch-bas/threejs-sims-house-builder/issues/23))
+- Layout schema validation hardened: corrupt share URLs or localStorage entries can no longer crash the app or produce NaN-corrupted items ([#24](https://github.com/ch-bas/threejs-sims-house-builder/issues/24))
+- Single-key shortcuts no longer hijack browser shortcuts like Ctrl+R and Cmd+F; Delete and arrow-nudge respect locked items ([#25](https://github.com/ch-bas/threejs-sims-house-builder/issues/25))
+- Removing or reordering floors keeps the same floor active instead of silently switching the edit target; undo no longer jumps to the ground floor ([#26](https://github.com/ch-bas/threejs-sims-house-builder/issues/26))
+- Escape now cancels an in-progress interior wall draft ([#27](https://github.com/ch-bas/threejs-sims-house-builder/issues/27))
+- Undo within the debounce window reverts the pending edit instead of discarding it; undo/redo stacks are StrictMode-safe ([#28](https://github.com/ch-bas/threejs-sims-house-builder/issues/28))
+- Auto-organize leaves doors, windows, security cameras, and outdoor items anchored instead of tearing them off walls ([#29](https://github.com/ch-bas/threejs-sims-house-builder/issues/29))
+- Pending auto-saves flush on tab close; library saves survive storage-quota errors with rollback and feedback; sidebar delete no longer leaves ghost ids in multi-select ([#30](https://github.com/ch-bas/threejs-sims-house-builder/issues/30))
+
+### Performance
+- Mousemove over the canvas no longer re-renders the whole React tree; editor context identity is stable ([#31](https://github.com/ch-bas/threejs-sims-house-builder/issues/31))
+- One render per frame while orbiting instead of two ([#33](https://github.com/ch-bas/threejs-sims-house-builder/issues/33))
+
+## [1.3.1] - 2026-06-10
+
+### Added
+- Fix eslint configuration.
+
+## [1.3.0] - 2026-06-10
+
+### Added
+- CCTV vision cones detect objects: furniture or NPCs in the field of view turn the cone alert red, pulse the wedge, and flare the scan line as it sweeps over the target
+- Gradient sky (zenith-to-horizon) driven by the time-of-day system
+- Wall Visibility row (N/E/S/W) in the Paint panel to hide/restore exterior walls
+- Click any wall in 3D to select it and auto-open the Paint panel; Delete removes interior walls or toggles exterior walls hidden
+- Collapsible Build Tools panel and bottom catalog strip
+- Outdoor items restricted to outside the building footprint; catalog drops default past the south wall
+- Filmic rendering pipeline: ACES tone mapping, PCF soft shadows, image-based lighting, render-on-demand, drag fast-path, OBB collision, GPU resource disposal
+
+### Fixed
+- Fix selection of internal/external walls.
+- Enable all mitems in build menu [sill height](https://github.com/ch-bas/threejs-sims-house-builder/issues/12).
+- Elements should be locked after they were [positioned](https://github.com/ch-bas/threejs-sims-house-builder/issues/11).
+- Correct window glass color and [sill height](https://github.com/ch-bas/threejs-sims-house-builder/issues/14).
+- Vision-cone animation now runs while the mouse is idle (render-on-demand invalidation)
+- Vision cones are no longer occluded by walls, furniture, or rugs
+
+## [1.2.0] - 2026-06-01
+
+### Added
+- Mobile support and responsive layout
+- 67 furniture items across 11 categories
+- Multi-floor buildings (up to 4 levels) with floor switcher
+- Walkthrough mode (first-person WASD + PointerLock)
+- Interior walls with vertex and right-angle snapping
+- Doors and windows that cut openings in walls
+- 7 room templates including Two-Story Home
+- 5 theme presets (Modern, Rustic, Minimalist, Cozy, Tropical)
+- 5 furniture sets (Dining, Bedroom, Home Office, Kitchen, Lounge)
+- Sun-arc time-of-day with dawn/noon/dusk/midnight presets
+- Multi-select with align, distribute, group drag/rotate
+- Undo/redo (snapshot-based, 50-entry stack)
+- Auto-save to localStorage
+- Saved-layouts library (name, save, list, load, delete)
+- Export/import JSON, PNG screenshot, GLB/glTF export
+- Shareable URLs (base64-encoded layout in hash)
+- Inventory CSV export
+- 15 achievements with toast notifications
+- Walking NPCs with procedural animation
+- Cost-density heatmap in 2D view
+- Floating item labels, hover tooltips, minimap
+- Roof styles (Flat, Gable, Hipped) with color picker
+- Floor patterns (Wood, Tile, Carpet, Concrete) and wall patterns (Brick, Wallpaper, Wood Panel, Plaster)
+- Floor plan image upload with opacity and 3D displacement
+- 3D measurement tool
+- Outdoor garden mode
+- Web-Audio sound cues
+- Keyboard shortcuts for all major actions
+- Camera presets (Iso, Top-down, Front, Corner, Fit-to-room)
+
+### Fixed
+- Auto-save properly wires live state into localStorage
+- requestAnimationFrame cancelled on unmount
+- snapToGrid no longer tears down the scene
+- Canvas snapshotted at top of init effect
+- importLayout validates JSON before applying
+- URL.revokeObjectURL called after downloads
+
+## [1.0.1] - 2026-06-03
+
+### Security
+- Resolved critical vulnerability in next@15.0.3 (CVE-2025-66478): DoS, SSRF, cache poisoning
+- Resolved moderate vulnerability in postcss <8.5.10: XSS via unescaped `</style>`
+
+## [1.0.0] - 2026-05-30
+
+### Added
+- Initial release
+- Grid-based room builder with Three.js
+- Basic furniture placement and drag
+- Next.js 15 + React 18 + Tailwind CSS setup
+
+[Unreleased]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.30.0...HEAD
+[1.30.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.29.0...v1.30.0
+[1.29.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.28.0...v1.29.0
+[1.28.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.27.0...v1.28.0
+[1.27.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.26.0...v1.27.0
+[1.26.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.25.0...v1.26.0
+[1.25.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.24.0...v1.25.0
+[1.24.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.23.0...v1.24.0
+[1.23.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.22.0...v1.23.0
+[1.22.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.21.0...v1.22.0
+[1.21.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.20.0...v1.21.0
+[1.20.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.19.0...v1.20.0
+[1.19.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.18.0...v1.19.0
+[1.18.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.17.0...v1.18.0
+[1.17.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.16.0...v1.17.0
+[1.16.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.15.0...v1.16.0
+[1.15.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.14.0...v1.15.0
+[1.14.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.13.0...v1.14.0
+[1.13.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.12.0...v1.13.0
+[1.12.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.11.0...v1.12.0
+[1.11.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.10.1...v1.11.0
+[1.10.1]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.10.0...v1.10.1
+[1.10.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.9.1...v1.10.0
+[1.9.1]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.9.0...v1.9.1
+[1.9.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.15...v1.9.0
+[1.8.15]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.14...v1.8.15
+[1.8.14]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.13...v1.8.14
+[1.8.13]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.12...v1.8.13
+[1.8.12]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.11...v1.8.12
+[1.8.11]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.10...v1.8.11
+[1.8.10]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.9...v1.8.10
+[1.8.9]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.8...v1.8.9
+[1.8.8]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.7...v1.8.8
+[1.8.7]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.6...v1.8.7
+[1.8.6]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.5...v1.8.6
+[1.8.5]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.4...v1.8.5
+[1.8.4]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.3...v1.8.4
+[1.8.3]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.2...v1.8.3
+[1.8.2]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.1...v1.8.2
+[1.8.1]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.8.0...v1.8.1
+[1.8.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.7.0...v1.8.0
+[1.7.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.6.0...v1.7.0
+[1.6.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.5.0...v1.6.0
+[1.5.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.3.1...v1.4.0
+[1.3.1]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/ch-bas/threejs-sims-house-builder/compare/v1.0.0...v1.2.0
+[1.0.0]: https://github.com/ch-bas/threejs-sims-house-builder/releases/tag/v1.0.0

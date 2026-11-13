@@ -1,0 +1,993 @@
+import { cutoutRect } from '../lib/footprint';
+import { GRASS_DROP, LOT_MARGIN, PAVEMENT_DEPTH, ROAD_DEPTH, groundHeightAt, hasNeighbourOn, outdoorGroundSize, roadEdges } from '../lib/site';
+import { removeAndDispose } from './builder-utils';
+import { fadeWithDistance, layGroundSurface } from './ground-surfaces';
+import { shutOutIndoorLampsUnder } from './outdoor-lamps';
+import { buildExcavationGeometry, buildTerrainGeometry, earthMaterial } from './terrain';
+import { DisposableLruCache } from './texture-lru';
+import type { FootprintCutout, Frontage, NeighbourSpec, TerrainSpec, Weather } from '../lib/types';
+import type * as ThreeNS from 'three';
+
+type ThreeModule = typeof import('./three-runtime');
+
+const OUTDOOR_TAG = 'outdoor';
+/** Marks the grass plane so the weather tint can find it among the scenery. */
+const GROUND_ROLE = 'ground';
+/** Where the last-applied weather is remembered, so a rebuilt lot starts tinted. */
+const WEATHER_KEY = 'outdoorWeather';
+
+const GRASS_COLOR = 0x6a9445;
+
+/**
+ * The grass colour under each weather (#189): a wet lawn reads darker and
+ * duller, a snowed-over one goes near-white. Clear is the untouched colour.
+ */
+export function outdoorGroundColor(weather: Weather): number {
+  switch (weather) {
+    case 'rain': return 0x5b8240;
+    case 'snow': return 0xcfd6de;
+    default: return GRASS_COLOR;
+  }
+}
+
+/**
+ * Tint the lot's ground for the weather. Called by `applyTimeOfDay`, which
+ * owns weather-driven lighting; remembered on the scene so `setOutdoorVisible`
+ * paints a rebuilt lot the same way (the lighting effect doesn't re-run when
+ * the lot does). Both ends of that hand-off live in this module.
+ */
+export function applyOutdoorWeather(scene: ThreeNS.Scene, weather: Weather): void {
+  scene.userData[WEATHER_KEY] = weather;
+  const color = outdoorGroundColor(weather);
+  for (const obj of scene.children) {
+    if (obj.userData.type !== OUTDOOR_TAG || obj.userData.role !== GROUND_ROLE) continue;
+    ((obj as ThreeNS.Mesh).material as ThreeNS.MeshStandardMaterial).color.setHex(color);
+  }
+}
+
+/**
+ * Build a suburban-style suburban lot around the room:
+ *
+ *  - a generous grass plane with darker tufts for variation
+ *  - a wood-decking style patio strip along the front (north) edge
+ *  - a grey sidewalk + asphalt road further out on the same side
+ *  - a perimeter of trees (mixed birch + leafy) framing the lot
+ *  - clusters of bushes and flower spots scattered around the grass
+ *
+ * Deterministic random so the layout doesn't shuffle every render.
+ *
+ * On a sloped site (#202) everything sits on the ground line instead of
+ * y = 0 — road and paths at street level, planting on the slope — and the
+ * lot is excavated around the house. Trees skip a side with a neighbour.
+ */
+export interface OutdoorSite {
+  /** The corner taken out of the footprint (#727): open ground. */
+  cutout?: FootprintCutout;
+  terrain?: TerrainSpec;
+  neighbours?: NeighbourSpec;
+  /** 'pavement': pavement and road run right up to the front wall (#204). */
+  frontage?: Frontage;
+  /** Pixels across a ground tile, by quality tier (#760). */
+  groundTile?: number;
+  /**
+   * The ground and road past the lot, the kerb and the grass's second lookup
+   * (#761). The low quality tier leaves them out (#760); absent is on.
+   */
+  richScenery?: boolean;
+}
+
+export function setOutdoorVisible(
+  THREE: ThreeModule,
+  scene: ThreeNS.Scene,
+  visible: boolean,
+  roomWidth: number,
+  roomDepth: number,
+  site: OutdoorSite = {}
+): void {
+  scene.children
+    .filter((obj) => obj.userData.type === OUTDOOR_TAG)
+    .forEach((obj) => {
+      // InstancedMesh owns per-instance GPU buffers (instanceMatrix /
+      // instanceColor) that the generic geometry/material disposer doesn't
+      // free — dispose them explicitly before the shared teardown runs.
+      disposeInstancedMeshes(obj);
+      removeAndDispose(scene, obj);
+    });
+
+  if (!visible) return;
+
+  const rng = makeRng(roomWidth * 1000 + roomDepth);
+  const halfW = roomWidth / 2;
+  const halfD = roomDepth / 2;
+  const lotMargin = LOT_MARGIN;
+  const lotHalfW = halfW + lotMargin;
+  const lotHalfD = halfD + lotMargin;
+  const groundSize = outdoorGroundSize(roomWidth, roomDepth);
+  const { terrain, cutout } = site;
+  const groundAt = (z: number) => groundHeightAt(terrain, z, halfD);
+  const streetY = groundAt(-halfD);
+
+  // These ground layers were stacked only 1mm apart (grass -0.04, sidewalk
+  // -0.03, road -0.029, dashes -0.028), which z-fights at orbit distance.
+  // Widened to ~10-15mm gaps while keeping the same layering order:
+  // grass (lowest) < sidewalk < road < dashes (top). Tufts and stepping
+  // stones keep their same relative offset above grass.
+  const GRASS_Y = -GRASS_DROP;
+  const SIDEWALK_Y = -0.035;
+  const ROAD_Y = -0.025;
+  const DASH_Y = -0.015;
+
+  // ---- 1. Grass plane (warm suburban green, or as the weather left it) ----
+  const weather = (scene.userData[WEATHER_KEY] as Weather | undefined) ?? 'clear';
+  const grassMat = new THREE.MeshStandardMaterial({ color: outdoorGroundColor(weather), roughness: 1 });
+  const rich = site.richScenery !== false;
+  const tile = site.groundTile !== undefined ? { pixels: site.groundTile } : {};
+  layGroundSurface(THREE, grassMat, 'grass', { ...tile, macro: rich });
+  const grass = terrain
+    ? new THREE.Mesh(buildTerrainGeometry(THREE, terrain, groundSize, halfW, halfD, GRASS_Y, cutout), grassMat)
+    : new THREE.Mesh(new THREE.PlaneGeometry(groundSize, groundSize, 1, 1), grassMat);
+  if (!terrain) {
+    grass.rotation.x = -Math.PI / 2;
+    grass.position.y = GRASS_Y;
+  }
+  grass.receiveShadow = true;
+  grass.userData.type = OUTDOOR_TAG;
+  grass.userData.role = GROUND_ROLE;
+  freezeMatrix(grass);
+  scene.add(grass);
+
+  if (rich) scene.add(buildGroundSkirt(THREE, groundSize, (z) => groundAt(z) + GRASS_Y - SKIRT_DROP, outdoorGroundColor(weather), tile));
+
+  // The sides of the dig where the house cuts into the hill.
+  const excavation = terrain ? buildExcavationGeometry(THREE, terrain, halfW, halfD, cutout) : null;
+  if (excavation) {
+    const earth = new THREE.Mesh(excavation, earthMaterial(THREE));
+    earth.receiveShadow = true;
+    earth.userData.type = OUTDOOR_TAG;
+    freezeMatrix(earth);
+    scene.add(earth);
+  }
+
+  // Tuft pass: a few hundred low patches of darker / lighter grass to break
+  // the flat plane up the way suburban terrain reads.
+  // A town frontage has no front garden: the pavement starts at the wall.
+  const pavement = site.frontage === 'pavement';
+  const roadLine = roadEdges(halfD, site.frontage);
+  const roadBand: readonly [number, number] = [roadLine.near - 0.1, roadLine.far + 0.5];
+  scatterGrassTufts(THREE, scene, rng, groundSize, lotHalfW, lotHalfD, groundAt, roadBand);
+
+  // ---- 2. Sidewalk + road on the north edge ----
+  const roadOffset = roadLine.near; // sidewalk starts past the lot (or at the wall)
+  const sidewalkDepth = PAVEMENT_DEPTH;
+  const roadDepth = ROAD_DEPTH;
+
+  const sidewalkMat = new THREE.MeshStandardMaterial({ color: PAVING_COLOR, roughness: 0.85 });
+  layGroundSurface(THREE, sidewalkMat, 'paving', tile);
+  const sidewalk = new THREE.Mesh(
+    new THREE.PlaneGeometry(groundSize, sidewalkDepth),
+    sidewalkMat
+  );
+  sidewalk.rotation.x = -Math.PI / 2;
+  sidewalk.position.set(0, streetY + SIDEWALK_Y, -(roadOffset + sidewalkDepth / 2));
+  sidewalk.receiveShadow = true;
+  sidewalk.userData.type = OUTDOOR_TAG;
+  freezeMatrix(sidewalk);
+  scene.add(sidewalk);
+
+  const asphaltMat = new THREE.MeshStandardMaterial({ color: ASPHALT_COLOR, roughness: 0.95 });
+  layGroundSurface(THREE, asphaltMat, 'asphalt', tile);
+  const road = new THREE.Mesh(
+    new THREE.PlaneGeometry(groundSize, roadDepth),
+    asphaltMat
+  );
+  road.rotation.x = -Math.PI / 2;
+  road.position.set(0, streetY + ROAD_Y, -(roadOffset + sidewalkDepth + roadDepth / 2));
+  road.receiveShadow = true;
+  road.userData.type = OUTDOOR_TAG;
+  freezeMatrix(road);
+  scene.add(road);
+
+  if (rich) {
+    // The kerb between them, proud of the road, along the pavement's far edge.
+    const kerbY = streetY + ROAD_Y + KERB_HEIGHT / 2;
+    const kerbZ = -(roadOffset + sidewalkDepth);
+    const kerb = new THREE.Mesh(
+      new THREE.BoxGeometry(groundSize, KERB_HEIGHT, KERB_WIDTH),
+      new THREE.MeshStandardMaterial({ color: 0xb9bab6, roughness: 0.9 })
+    );
+    kerb.position.set(0, kerbY, kerbZ);
+    kerb.receiveShadow = true;
+    kerb.userData.type = OUTDOOR_TAG;
+    freezeMatrix(kerb);
+    scene.add(kerb);
+
+    // Past the lot the road carries on and dissolves with the skirt.
+    scene.add(buildRoadTails(THREE, groundSize, streetY, [
+      { near: -(roadOffset + sidewalkDepth), far: -roadOffset, y: SIDEWALK_Y, color: PAVING_COLOR },
+      { near: -(roadOffset + sidewalkDepth + roadDepth), far: -(roadOffset + sidewalkDepth), y: ROAD_Y, color: ASPHALT_TAIL_COLOR },
+    ]));
+  }
+
+  // Yellow centre dashes on the road — one InstancedMesh (1 draw call) for all
+  // the identical dashes.
+  const dashZ = -(roadOffset + sidewalkDepth + roadDepth / 2);
+  const dummy = new THREE.Object3D();
+  const dashTransforms: ThreeNS.Matrix4[] = [];
+  for (let x = -groundSize / 2 + 2; x < groundSize / 2 - 2; x += 2.4) {
+    dummy.position.set(x, streetY + DASH_Y, dashZ);
+    dummy.rotation.set(-Math.PI / 2, 0, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    dashTransforms.push(dummy.matrix.clone());
+  }
+  if (dashTransforms.length > 0) {
+    const dashMat = new THREE.MeshStandardMaterial({ color: 0xf4c026, roughness: 0.7 });
+    const dashGeom = new THREE.PlaneGeometry(1.2, 0.18);
+    const dashes = new THREE.InstancedMesh(dashGeom, dashMat, dashTransforms.length);
+    dashTransforms.forEach((m, i) => dashes.setMatrixAt(i, m));
+    dashes.instanceMatrix.needsUpdate = true;
+    // The base geometry's bounding sphere sits at the origin, but the instances
+    // span the whole lot — recompute over the instance matrices so three.js
+    // frustum-culls the real spread instead of blinking the group out.
+    dashes.computeBoundingSphere();
+    dashes.matrixAutoUpdate = false;
+    dashes.updateMatrix();
+    dashes.userData.type = OUTDOOR_TAG;
+    scene.add(dashes);
+  }
+
+  // Path of stepping stones from the front-of-lot edge to the room's "door"
+  // wall (north). Identical cylinders → one InstancedMesh.
+  const stoneTransforms: ThreeNS.Matrix4[] = [];
+  // A cut across the middle of the front moves the wall the path leads to.
+  const notch = cutoutRect({ width: roomWidth, height: roomDepth, cutout });
+  const pathStart = notch && notch.z0 === -halfD && notch.x0 < 0 && notch.x1 > 0 ? notch.z1 : -halfD;
+  for (let z = pathStart - 0.5; !pavement && z >= -roadOffset; z -= 0.7) {
+    dummy.position.set(0, groundAt(z) - 0.005, z);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    stoneTransforms.push(dummy.matrix.clone());
+  }
+  if (stoneTransforms.length > 0) {
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0xb0b3b0, roughness: 0.9 });
+    const stoneGeom = new THREE.CylinderGeometry(0.32, 0.30, 0.06, 12);
+    const stones = new THREE.InstancedMesh(stoneGeom, stoneMat, stoneTransforms.length);
+    stoneTransforms.forEach((m, i) => stones.setMatrixAt(i, m));
+    stones.instanceMatrix.needsUpdate = true;
+    stones.computeBoundingSphere(); // bound the instance spread for culling
+    stones.receiveShadow = true;
+    stones.matrixAutoUpdate = false;
+    stones.updateMatrix();
+    stones.userData.type = OUTDOOR_TAG;
+    scene.add(stones);
+  }
+
+  // ---- 3. Perimeter trees + bushes ----
+  scatterPerimeter(THREE, scene, rng, lotHalfW, lotHalfD, groundAt, site.neighbours, pavement ? halfD : null);
+
+  // Everything out here is on the far side of a wall from the lamps indoors.
+  for (const obj of scene.children) if (obj.userData.type === OUTDOOR_TAG) shutOutIndoorLampsUnder(THREE, obj);
+}
+
+/**
+ * How far the ground runs on past the lot's edge. Further than any camera
+ * sees it: it thins into the sky by distance from the camera (`fade` in
+ * ground-surfaces), so its own edge never shows.
+ */
+const SKIRT_REACH = 1500;
+const SKIRT_SEGMENTS = 64;
+/** Under the grass where they overlap, or the two z-fight (#276). */
+const SKIRT_DROP = 0.02;
+const SKIRT_OVERLAP = 0.5;
+
+/**
+ * The ground past the lot (#761): the same lit grass, thinning into the haze
+ * under the horizon, so the lot has no square edge. Only this ring fades, by
+ * distance from the camera, so nothing on the lot is washed out as a scene
+ * fog would do. It follows the weather tint.
+ */
+function buildGroundSkirt(
+  THREE: ThreeModule,
+  groundSize: number,
+  heightAt: (z: number) => number,
+  color: number,
+  tile: { pixels?: number }
+): ThreeNS.Mesh {
+  const half = groundSize / 2 - SKIRT_OVERLAP;
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const rings = 2;
+  for (let segment = 0; segment <= SKIRT_SEGMENTS; segment += 1) {
+    const angle = (segment / SKIRT_SEGMENTS) * Math.PI * 2;
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    // The inner ring sits on the lot's square, the rest fan out from it.
+    const reach = half / Math.max(Math.abs(cos), Math.abs(sin));
+    const y = heightAt(Math.max(-half, Math.min(half, sin * reach)));
+    for (const out of [0, SKIRT_REACH]) positions.push(cos * (reach + out), y, sin * (reach + out));
+    if (segment === SKIRT_SEGMENTS) continue;
+    for (let ring = 0; ring < rings - 1; ring += 1) {
+      const a = segment * rings + ring;
+      const b = a + rings;
+      indices.push(a, b, a + 1, b, b + 1, a + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(positions.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  geometry.setIndex(indices);
+  const material = new THREE.MeshStandardMaterial({ color, roughness: 1, transparent: true, depthWrite: false });
+  layGroundSurface(THREE, material, 'grass', { ...tile, fade: Math.SQRT2 * groundSize / 2 });
+  const skirt = new THREE.Mesh(geometry, material);
+  skirt.renderOrder = -0.9;
+  skirt.raycast = () => undefined;
+  skirt.userData.type = OUTDOOR_TAG;
+  skirt.userData.role = GROUND_ROLE;
+  freezeMatrix(skirt);
+  return skirt;
+}
+
+const PAVING_COLOR = 0xe2e3df;
+const ASPHALT_COLOR = 0x53565a;
+/** The textured road's average, for the plain tail that carries on from it. */
+const ASPHALT_TAIL_COLOR = 0x3a3c3f;
+const KERB_HEIGHT = 0.1;
+const KERB_WIDTH = 0.16;
+/** Road and pavement beyond the lot on both sides, one mesh, fading like the skirt. */
+function buildRoadTails(
+  THREE: ThreeModule,
+  groundSize: number,
+  streetY: number,
+  bands: ReadonlyArray<{ near: number; far: number; y: number; color: number }>
+): ThreeNS.Mesh {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const indices: number[] = [];
+  const paint = new THREE.Color();
+  for (const band of bands) {
+    paint.setHex(band.color);
+    for (const side of [-1, 1]) {
+      const base = positions.length / 3;
+      for (const out of [0, SKIRT_REACH]) {
+        const x = side * (groundSize / 2 + out);
+        for (const z of [band.near, band.far]) {
+          positions.push(x, streetY + band.y, z);
+          colors.push(paint.r, paint.g, paint.b);
+        }
+      }
+      // Facing up on either side.
+      if (side > 0) indices.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+      else indices.push(base, base + 2, base + 1, base + 2, base + 3, base + 1);
+    }
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  geometry.setAttribute('normal', new THREE.Float32BufferAttribute(positions.map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
+  geometry.setIndex(indices);
+  const material = new THREE.MeshStandardMaterial({ roughness: 0.95, vertexColors: true, transparent: true, depthWrite: false });
+  fadeWithDistance(material, Math.SQRT2 * groundSize / 2);
+  const tails = new THREE.Mesh(geometry, material);
+  tails.renderOrder = -0.8;
+  tails.frustumCulled = false;
+  tails.raycast = () => undefined;
+  tails.userData.type = OUTDOOR_TAG;
+  freezeMatrix(tails);
+  return tails;
+}
+
+/** Static mesh — never moves after positioning, so bake its matrix once. */
+function freezeMatrix(obj: ThreeNS.Object3D): void {
+  obj.updateMatrix();
+  obj.matrixAutoUpdate = false;
+}
+
+/** Freeze a whole static subtree (group + all descendants). */
+function freezeMatrixDeep(obj: ThreeNS.Object3D): void {
+  obj.traverse((node) => {
+    node.updateMatrix();
+    node.matrixAutoUpdate = false;
+  });
+}
+
+/** Free the per-instance GPU buffers of any InstancedMesh in the subtree.
+ *  The shared geometry/material disposer doesn't cover these. */
+function disposeInstancedMeshes(obj: ThreeNS.Object3D): void {
+  obj.traverse((node) => {
+    const inst = node as ThreeNS.InstancedMesh;
+    if (inst.isInstancedMesh && typeof inst.dispose === 'function') inst.dispose();
+  });
+}
+
+function scatterGrassTufts(
+  THREE: ThreeModule,
+  scene: ThreeNS.Scene,
+  rng: () => number,
+  groundSize: number,
+  lotHalfW: number,
+  lotHalfD: number,
+  groundAt: (z: number) => number,
+  roadBand: readonly [number, number]
+): void {
+  // 220 identical half-flattened spheres in two shades — collapse them into a
+  // single InstancedMesh (1 draw call) with per-instance colour. RNG draws are
+  // consumed in the exact same order as the old per-mesh loop so the scatter,
+  // shade choice, and scale are visually identical.
+  const tuftGeom = new THREE.SphereGeometry(0.18, 6, 5);
+  const tuftMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const dark = new THREE.Color(0x5e9b2e);
+  const bright = new THREE.Color(0x9bc55a);
+  const half = groundSize / 2;
+  const count = 220;
+
+  const matrices: ThreeNS.Matrix4[] = [];
+  const colors: ThreeNS.Color[] = [];
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < count; i += 1) {
+    const x = (rng() - 0.5) * groundSize;
+    const z = (rng() - 0.5) * groundSize;
+    // Don't put tufts inside the lot footprint or directly on the road.
+    if (Math.abs(x) < lotHalfW + 0.5 && Math.abs(z) < lotHalfD + 0.5) continue;
+    if (z < -roadBand[0] && z > -roadBand[1]) continue;
+    const color = rng() > 0.5 ? dark : bright;
+    const s = 0.7 + rng() * 0.6;
+    // The old code hid tufts far out in the fog (`.visible = false`), which
+    // renders nothing — so we simply omit those instances (visually identical,
+    // and cheaper). The RNG for position/shade/scale is still consumed above so
+    // the retained tufts land in exactly the same spots as before.
+    if (Math.hypot(x, z) > half * 0.8) continue;
+    dummy.position.set(x, groundAt(z) - 0.03, z);
+    dummy.scale.set(s, s * 0.45, s);
+    dummy.rotation.set(0, 0, 0);
+    dummy.updateMatrix();
+    matrices.push(dummy.matrix.clone());
+    colors.push(color);
+  }
+
+  if (matrices.length === 0) {
+    tuftGeom.dispose();
+    tuftMat.dispose();
+    return;
+  }
+
+  const tufts = new THREE.InstancedMesh(tuftGeom, tuftMat, matrices.length);
+  for (let i = 0; i < matrices.length; i += 1) {
+    tufts.setMatrixAt(i, matrices[i]!);
+    tufts.setColorAt(i, colors[i]!);
+  }
+  tufts.instanceMatrix.needsUpdate = true;
+  if (tufts.instanceColor) tufts.instanceColor.needsUpdate = true;
+  tufts.computeBoundingSphere(); // bound the instance spread for culling
+  // Static — never moves.
+  tufts.matrixAutoUpdate = false;
+  tufts.updateMatrix();
+  tufts.userData.type = OUTDOOR_TAG;
+  scene.add(tufts);
+}
+
+interface TreeKind {
+  id: 'birch' | 'oak' | 'pine';
+  trunkColor: number;
+  leafColor: number;
+  leafColorAlt: number;
+  trunkRadius: number;
+  trunkHeight: number;
+  crownRadius: number;
+  crownShape: 'leafy' | 'pine';
+}
+
+const TREE_KINDS: readonly TreeKind[] = [
+  // Birch — pale bark with dark horizontal stripes, bright leafy crown.
+  { id: 'birch', trunkColor: 0xe8e3da, leafColor: 0x82b54a, leafColorAlt: 0x9fcf5b, trunkRadius: 0.10, trunkHeight: 2.6, crownRadius: 0.95, crownShape: 'leafy' },
+  // Oak — warm brown trunk, deep two-tone green crown.
+  { id: 'oak',   trunkColor: 0x6b4a2b, leafColor: 0x3e7a2e, leafColorAlt: 0x5a9b3d, trunkRadius: 0.15, trunkHeight: 2.0, crownRadius: 1.20, crownShape: 'leafy' },
+  // Pine — dark trunk, conical evergreen with two-tone needles.
+  { id: 'pine',  trunkColor: 0x3e2e1d, leafColor: 0x2b5a2a, leafColorAlt: 0x3d7838, trunkRadius: 0.13, trunkHeight: 1.2, crownRadius: 0.90, crownShape: 'pine' },
+];
+
+// Cache the birch-bark texture so we generate the canvas only once per
+// editor; `clearTextureCaches` drops it at unmount (#559).
+const birchBarkTextureCache = new DisposableLruCache<ThreeNS.CanvasTexture>(1);
+
+function getBirchBarkTexture(THREE: ThreeModule): ThreeNS.CanvasTexture | null {
+  const cached = birchBarkTextureCache.get('birch');
+  if (cached) return cached;
+  if (typeof document === 'undefined') return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  // Pale base with a soft vertical gradient (birch trunks are a touch
+  // darker near the ground).
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0, '#f4eee5');
+  grad.addColorStop(1, '#d2cbbe');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 256);
+  // Characteristic dark horizontal slashes.
+  for (let i = 0; i < 28; i += 1) {
+    const y = (i * 9.1 + Math.sin(i * 1.7) * 4) % 256;
+    const startX = (Math.sin(i * 2.3) * 32 + 32) % 64;
+    const length = 8 + Math.abs(Math.cos(i * 1.1) * 30);
+    const alpha = 0.30 + (i % 5) * 0.08;
+    ctx.fillStyle = `rgba(40, 25, 18, ${alpha.toFixed(2)})`;
+    ctx.fillRect(startX, y, length, 1.6);
+  }
+  // A few smaller eye-knot dots.
+  for (let i = 0; i < 14; i += 1) {
+    const x = (i * 11) % 64;
+    const y = (i * 23) % 256;
+    ctx.fillStyle = 'rgba(40, 25, 18, 0.45)';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 1.4, 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  // Tag sRGB (CanvasTextures default to linear) so the bark isn't washed out.
+  texture.colorSpace = THREE.SRGBColorSpace;
+  birchBarkTextureCache.set('birch', texture);
+  return texture;
+}
+
+/** Displace each icosahedron vertex slightly so the surface reads as a
+ * lumpy leaf cluster rather than a smooth sphere. Flat-shaded so the
+ * faceted look says "many leaves" at orbit distance. */
+function buildLeafBlobGeometry(
+  THREE: ThreeModule,
+  radius: number,
+  seed: number
+): ThreeNS.BufferGeometry {
+  const geom = new THREE.IcosahedronGeometry(radius, 1);
+  const positions = geom.attributes.position;
+  if (positions) {
+    for (let i = 0; i < positions.count; i += 1) {
+      const phase = seed + i * 1.7;
+      const jitter = (Math.sin(phase) * 0.5 + Math.cos(phase * 1.3) * 0.5) * radius * 0.18;
+      const x = positions.getX(i);
+      const y = positions.getY(i);
+      const z = positions.getZ(i);
+      const len = Math.sqrt(x * x + y * y + z * z) || 1;
+      positions.setXYZ(
+        i,
+        x + (x / len) * jitter,
+        y + (y / len) * jitter,
+        z + (z / len) * jitter
+      );
+    }
+    positions.needsUpdate = true;
+  }
+  geom.computeVertexNormals();
+  return geom;
+}
+
+function scatterPerimeter(
+  THREE: ThreeModule,
+  scene: ThreeNS.Scene,
+  rng: () => number,
+  lotHalfW: number,
+  lotHalfD: number,
+  groundAt: (z: number) => number,
+  neighbours: NeighbourSpec | undefined,
+  /** With a pavement frontage: the front wall's |z|; nothing is planted beyond it. */
+  pavementFrom: number | null
+): void {
+  const onStreet = (z: number) => pavementFrom !== null && z < -pavementFrom;
+  // Lumpy and faceted like the tree crowns beside them, not smooth balls.
+  const bushMat = new THREE.MeshStandardMaterial({ color: 0x3e7a35, roughness: 0.9, flatShading: true });
+  const bushGeom = buildLeafBlobGeometry(THREE, 0.45, 11);
+
+  // Trees: ring around three sides of the lot (skip the road side).
+  const forest: Forest = { parts: new Map(), bases: [] };
+  const treeCount = 14;
+  for (let i = 0; i < treeCount; i += 1) {
+    const t = i / treeCount;
+    let x: number, z: number;
+    // Distribute across south edge (back of lot), east, and west — leave the
+    // north open for the sidewalk/road frontage we just drew.
+    const side = i % 3;
+    if (side === 0) {
+      x = (rng() - 0.5) * (lotHalfW * 2 + 4);
+      z = lotHalfD + 1.5 + rng() * 4; // south
+    } else if (side === 1) {
+      x = lotHalfW + 1.5 + rng() * 3.5; // east
+      z = (rng() - 0.5) * (lotHalfD * 2);
+    } else {
+      x = -(lotHalfW + 1.5 + rng() * 3.5); // west
+      z = (rng() - 0.5) * (lotHalfD * 2);
+    }
+    // A neighbour's house stands on that side (#202), or the street row does (#310).
+    if ((side === 1 && hasNeighbourOn(neighbours, 'east')) || (side === 2 && hasNeighbourOn(neighbours, 'west'))) continue;
+    if (onStreet(z)) continue;
+    addTree(THREE, forest, x, groundAt(z), z, TREE_KINDS[i % TREE_KINDS.length]!, rng);
+    void t;
+  }
+  addForest(THREE, scene, forest);
+
+  // Small ornamental shrubs hugging the lot edges — identical sphere geometry
+  // and material, so collapse them into one InstancedMesh (1 draw call). RNG is
+  // consumed in the same order so positions/scales are unchanged.
+  const shrubCount = 18;
+  const shrubDummy = new THREE.Object3D();
+  const shrubTransforms: ThreeNS.Matrix4[] = [];
+  for (let i = 0; i < shrubCount; i += 1) {
+    const angle = (i / shrubCount) * Math.PI * 2;
+    const radius = Math.max(lotHalfW, lotHalfD) + 0.8 + rng() * 0.6;
+    const x = Math.cos(angle) * radius;
+    const z = Math.sin(angle) * radius;
+    const s = 0.7 + rng() * 0.4;
+    // Keep the road frontage clean.
+    if (z < -lotHalfD || onStreet(z)) continue;
+    shrubDummy.position.set(x, groundAt(z) + 0.32, z);
+    shrubDummy.rotation.set(0, 0, 0);
+    shrubDummy.scale.setScalar(s);
+    shrubDummy.updateMatrix();
+    shrubTransforms.push(shrubDummy.matrix.clone());
+  }
+  if (shrubTransforms.length > 0) {
+    const shrubs = new THREE.InstancedMesh(bushGeom, bushMat, shrubTransforms.length);
+    shrubTransforms.forEach((m, i) => shrubs.setMatrixAt(i, m));
+    shrubs.instanceMatrix.needsUpdate = true;
+    shrubs.computeBoundingSphere(); // bound the instance spread for culling
+    shrubs.castShadow = true;
+    shrubs.matrixAutoUpdate = false;
+    shrubs.updateMatrix();
+    shrubs.userData.type = OUTDOOR_TAG;
+    scene.add(shrubs);
+  } else {
+    bushGeom.dispose();
+    bushMat.dispose();
+  }
+
+  // A few cheerful flower patches around the lot's front. Every flower blossom
+  // and every stem shares identical geometry, so accumulate their world
+  // transforms across all patches and emit two InstancedMeshes (blossoms carry
+  // per-instance colour). RNG draws stay in the same order as the old per-mesh
+  // build, so positions/colours/counts are unchanged.
+  const flowerColors = [0xff5b6a, 0xffd24a, 0xffffff, 0xc77bff];
+  const dummy = new THREE.Object3D();
+  const blossomMatrices: ThreeNS.Matrix4[] = [];
+  const blossomColors: ThreeNS.Color[] = [];
+  const stemMatrices: ThreeNS.Matrix4[] = [];
+  for (let i = 0; pavementFrom === null && i < 6; i += 1) {
+    const x = ((rng() - 0.5) * lotHalfW) * 2;
+    const z = -lotHalfD - 0.4 - rng() * 0.6;
+    collectFlowerPatch(THREE, dummy, x, groundAt(z), z, flowerColors, rng, blossomMatrices, blossomColors, stemMatrices);
+  }
+  if (blossomMatrices.length > 0) {
+    const blossomGeom = new THREE.SphereGeometry(0.07, 8, 8);
+    const blossomMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+    const blossoms = new THREE.InstancedMesh(blossomGeom, blossomMat, blossomMatrices.length);
+    blossomMatrices.forEach((m, i) => {
+      blossoms.setMatrixAt(i, m);
+      blossoms.setColorAt(i, blossomColors[i]!);
+    });
+    blossoms.instanceMatrix.needsUpdate = true;
+    if (blossoms.instanceColor) blossoms.instanceColor.needsUpdate = true;
+    blossoms.computeBoundingSphere(); // bound the instance spread for culling
+    blossoms.matrixAutoUpdate = false;
+    blossoms.updateMatrix();
+    blossoms.userData.type = OUTDOOR_TAG;
+    scene.add(blossoms);
+
+    const stemGeom = new THREE.CylinderGeometry(0.012, 0.015, 0.18, 5);
+    const stemMat = new THREE.MeshStandardMaterial({ color: 0x336e1f, roughness: 0.9 });
+    const stems = new THREE.InstancedMesh(stemGeom, stemMat, stemMatrices.length);
+    stemMatrices.forEach((m, i) => stems.setMatrixAt(i, m));
+    stems.instanceMatrix.needsUpdate = true;
+    stems.computeBoundingSphere(); // bound the instance spread for culling
+    stems.matrixAutoUpdate = false;
+    stems.updateMatrix();
+    stems.userData.type = OUTDOOR_TAG;
+    scene.add(stems);
+  }
+}
+
+/**
+ * The perimeter trees, merged (#407): one mesh per (kind, part, shade) holding
+ * every tree's copy of that part baked into world space, instead of ~10 meshes
+ * and ~8 materials per tree. Baking rather than instancing keeps each tree's
+ * own seeded leaf jitter, scale and spin.
+ */
+interface ForestPart {
+  material: ThreeNS.MeshStandardMaterial;
+  castShadow: boolean;
+  receiveShadow: boolean;
+  geometries: ThreeNS.BufferGeometry[];
+}
+
+interface Forest {
+  parts: Map<string, ForestPart>;
+  /** Where each tree stands (its base), in planting order. */
+  bases: Array<{ x: number; y: number; z: number }>;
+}
+
+/** Marks the group holding the merged perimeter trees. */
+const TREES_ROLE = 'trees';
+
+function forestPart(
+  forest: Forest,
+  key: string,
+  castShadow: boolean,
+  receiveShadow: boolean,
+  makeMaterial: () => ThreeNS.MeshStandardMaterial
+): ForestPart {
+  let part = forest.parts.get(key);
+  if (!part) {
+    part = { material: makeMaterial(), castShadow, receiveShadow, geometries: [] };
+    forest.parts.set(key, part);
+  }
+  return part;
+}
+
+function trunkMaterial(THREE: ThreeModule, kind: TreeKind): ThreeNS.MeshStandardMaterial {
+  const bark = kind.id === 'birch' ? getBirchBarkTexture(THREE) : null;
+  if (!bark) return new THREE.MeshStandardMaterial({ color: kind.trunkColor, roughness: 0.95 });
+  const trunkBark = bark.clone();
+  trunkBark.needsUpdate = true;
+  trunkBark.repeat.set(1, Math.max(1, kind.trunkHeight / 2));
+  return new THREE.MeshStandardMaterial({ map: trunkBark, roughness: 0.85 });
+}
+
+function addTree(
+  THREE: ThreeModule,
+  forest: Forest,
+  x: number,
+  y: number,
+  z: number,
+  kind: TreeKind,
+  rng: () => number
+): void {
+  const scale = 0.85 + rng() * 0.5;
+  const group = new THREE.Group();
+  const seed = rng() * 1000;
+  // Placeholder nodes carry each part's local transform until it's baked.
+  const pieces: Array<{ node: ThreeNS.Object3D; geometry: ThreeNS.BufferGeometry; part: ForestPart }> = [];
+  const piece = (geometry: ThreeNS.BufferGeometry, part: ForestPart): ThreeNS.Object3D => {
+    const node = new THREE.Object3D();
+    group.add(node);
+    pieces.push({ node, geometry, part });
+    return node;
+  };
+
+  // ----- Trunk -----
+  const trunk = piece(
+    new THREE.CylinderGeometry(
+      kind.trunkRadius * 0.75, // narrower at top
+      kind.trunkRadius * 1.2,  // flare at the base
+      kind.trunkHeight,
+      12
+    ),
+    forestPart(forest, `${kind.id}:trunk`, true, true, () => trunkMaterial(THREE, kind))
+  );
+  trunk.position.y = kind.trunkHeight / 2;
+
+  // A subtle root flare ring at the very bottom for the leafy species.
+  if (kind.id !== 'pine') {
+    const flare = piece(
+      new THREE.CylinderGeometry(kind.trunkRadius * 1.4, kind.trunkRadius * 1.7, 0.12, 10),
+      forestPart(forest, `${kind.id}:flare`, false, true, () => new THREE.MeshStandardMaterial({
+        color: kind.id === 'birch' ? 0xc8c2b6 : 0x4d3520,
+        roughness: 1,
+      }))
+    );
+    flare.position.y = 0.05;
+  }
+
+  // ----- Crown -----
+  if (kind.crownShape === 'pine') {
+    // 5 stacked irregular-bottom-edge cones for a thick pine — each cone
+    // uses 14 segments so the silhouette is rounder, and the foliage is
+    // flat-shaded for that crinkled-needle look.
+    const tiers = [
+      { y: 0.0, r: kind.crownRadius * 1.05, h: 1.4, dark: true  },
+      { y: 0.9, r: kind.crownRadius * 0.92, h: 1.3, dark: false },
+      { y: 1.7, r: kind.crownRadius * 0.78, h: 1.2, dark: true  },
+      { y: 2.4, r: kind.crownRadius * 0.58, h: 1.0, dark: false },
+      { y: 3.0, r: kind.crownRadius * 0.35, h: 0.8, dark: true  },
+    ];
+    for (const t of tiers) {
+      const cone = piece(
+        new THREE.ConeGeometry(t.r, t.h, 14),
+        forestPart(forest, `${kind.id}:needles:${t.dark ? 'dark' : 'light'}`, true, false, () => new THREE.MeshStandardMaterial({
+          color: t.dark ? kind.leafColor : kind.leafColorAlt,
+          roughness: 0.95,
+          flatShading: true,
+        }))
+      );
+      cone.position.y = kind.trunkHeight + t.y + t.h / 2;
+      cone.rotation.y = rng() * Math.PI * 2;
+    }
+  } else {
+    // Visible branches poking out from the top of the trunk before the
+    // foliage takes over.
+    const branchPart = forestPart(forest, `${kind.id}:branch`, true, false, () => new THREE.MeshStandardMaterial({
+      color: kind.trunkColor,
+      roughness: 0.9,
+    }));
+    for (let b = 0; b < 3; b += 1) {
+      const angle = (b / 3) * Math.PI * 2 + rng() * 0.5;
+      const branchLen = kind.crownRadius * (0.5 + rng() * 0.3);
+      const branch = piece(
+        new THREE.CylinderGeometry(
+          kind.trunkRadius * 0.35,
+          kind.trunkRadius * 0.5,
+          branchLen,
+          6
+        ),
+        branchPart
+      );
+      branch.rotation.z = Math.PI / 2 - 0.6;
+      branch.rotation.y = angle;
+      branch.position.set(
+        Math.cos(angle) * branchLen * 0.45,
+        kind.trunkHeight - 0.1,
+        Math.sin(angle) * branchLen * 0.45
+      );
+    }
+
+    // Cluster of 6 lumpy leaf blobs in alternating shades. Each blob is an
+    // icosahedron with displaced vertices + flat shading, so the canopy
+    // reads as clumped foliage rather than a smooth ball.
+    const blobs: ReadonlyArray<readonly [number, number, number, number, number]> = [
+      // x, y, z, radius-multiplier, color-index (0 = main, 1 = light)
+      [ 0.00, 0.30,  0.00, 1.00, 1],
+      [-0.55, 0.05,  0.15, 0.70, 0],
+      [ 0.45, 0.18, -0.20, 0.78, 0],
+      [-0.20, 0.65,  0.10, 0.66, 1],
+      [ 0.15, 0.55, -0.40, 0.62, 0],
+      [-0.05, 0.40,  0.50, 0.70, 1],
+    ];
+    blobs.forEach(([bx, by, bz, br, ci], i) => {
+      const color = ci === 1 ? kind.leafColorAlt : kind.leafColor;
+      const blob = piece(
+        buildLeafBlobGeometry(THREE, kind.crownRadius * br, seed + i),
+        forestPart(forest, `${kind.id}:leaves:${ci}`, true, true, () => new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.95,
+          flatShading: true,
+        }))
+      );
+      blob.position.set(
+        bx * kind.crownRadius,
+        kind.trunkHeight + kind.crownRadius * (0.5 + by),
+        bz * kind.crownRadius
+      );
+    });
+  }
+
+  group.position.set(x, y, z);
+  group.rotation.y = rng() * Math.PI * 2;
+  group.scale.setScalar(scale);
+  group.updateMatrixWorld(true);
+  for (const { node, geometry, part } of pieces) {
+    geometry.applyMatrix4(node.matrixWorld);
+    part.geometries.push(geometry);
+  }
+  forest.bases.push({ x, y, z });
+}
+
+/** Turn the collected parts into one static mesh each, under one group. */
+function addForest(THREE: ThreeModule, scene: ThreeNS.Scene, forest: Forest): void {
+  if (forest.parts.size === 0) return;
+  const group = new THREE.Group();
+  for (const part of forest.parts.values()) {
+    const merged = new THREE.Mesh(mergeStaticGeometries(THREE, part.geometries), part.material);
+    merged.castShadow = part.castShadow;
+    merged.receiveShadow = part.receiveShadow;
+    group.add(merged);
+  }
+  group.userData.type = OUTDOOR_TAG;
+  group.userData.role = TREES_ROLE;
+  group.userData.treeBases = forest.bases;
+  // Trees never move — bake the group's and every child's matrix once.
+  freezeMatrixDeep(group);
+  scene.add(group);
+}
+
+/**
+ * Concatenate geometries that are already in world space into one, and
+ * dispose the inputs. The trees feed it parts from one three generator, so
+ * the attribute names match and all are indexed or none is; a mix is
+ * normalised to non-indexed. Exported for tests.
+ */
+export function mergeStaticGeometries(
+  THREE: ThreeModule,
+  input: readonly ThreeNS.BufferGeometry[]
+): ThreeNS.BufferGeometry {
+  const indexed = input.every((g) => g.index !== null);
+  const sources = indexed ? input : input.map((g) => (g.index ? g.toNonIndexed() : g));
+  const merged = new THREE.BufferGeometry();
+  const first = sources[0];
+  if (!first) return merged;
+  const names = Object.keys(first.attributes).filter((name) => sources.every((g) => g.hasAttribute(name)));
+  let vertexCount = 0;
+  let indexCount = 0;
+  for (const g of sources) {
+    vertexCount += g.getAttribute('position').count;
+    indexCount += g.index?.count ?? 0;
+  }
+  for (const name of names) {
+    const itemSize = first.getAttribute(name).itemSize;
+    const array = new Float32Array(vertexCount * itemSize);
+    let offset = 0;
+    for (const g of sources) {
+      const attr = g.getAttribute(name);
+      for (let i = 0; i < attr.count; i += 1) {
+        for (let c = 0; c < itemSize; c += 1) array[offset + i * itemSize + c] = attr.getComponent(i, c);
+      }
+      offset += attr.count * itemSize;
+    }
+    merged.setAttribute(name, new THREE.BufferAttribute(array, itemSize));
+  }
+  if (indexed) {
+    const index = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
+    let at = 0;
+    let base = 0;
+    for (const g of sources) {
+      const source = g.index;
+      if (!source) continue;
+      for (let i = 0; i < source.count; i += 1) index[at + i] = source.getX(i) + base;
+      at += source.count;
+      base += g.getAttribute('position').count;
+    }
+    merged.setIndex(new THREE.BufferAttribute(index, 1));
+  }
+  merged.computeBoundingSphere();
+  for (const g of new Set([...input, ...sources])) g.dispose();
+  return merged;
+}
+
+/**
+ * Accumulate one flower patch's blossom + stem transforms (in world space —
+ * the patch groups were never rotated or scaled) into the shared instance
+ * arrays. Mirrors the original per-mesh layout exactly.
+ */
+function collectFlowerPatch(
+  THREE: ThreeModule,
+  dummy: ThreeNS.Object3D,
+  x: number,
+  y: number,
+  z: number,
+  colors: readonly number[],
+  rng: () => number,
+  blossomMatrices: ThreeNS.Matrix4[],
+  blossomColors: ThreeNS.Color[],
+  stemMatrices: ThreeNS.Matrix4[]
+): void {
+  const count = 6 + Math.floor(rng() * 4);
+  for (let i = 0; i < count; i += 1) {
+    const angle = rng() * Math.PI * 2;
+    const r = rng() * 0.35;
+    const px = Math.cos(angle) * r;
+    const pz = Math.sin(angle) * r;
+    const color = colors[Math.floor(rng() * colors.length)]!;
+
+    dummy.position.set(x + px, y + 0.12, z + pz);
+    dummy.rotation.set(0, 0, 0);
+    dummy.scale.set(1, 1, 1);
+    dummy.updateMatrix();
+    blossomMatrices.push(dummy.matrix.clone());
+    blossomColors.push(new THREE.Color(color));
+
+    dummy.position.set(x + px, y + 0.05, z + pz);
+    dummy.updateMatrix();
+    stemMatrices.push(dummy.matrix.clone());
+  }
+}
+
+/** Mulberry32 — small, deterministic PRNG so the lot doesn't reshuffle. */
+function makeRng(seed: number): () => number {
+  let state = (seed | 0) || 1;
+  return function next(): number {
+    state |= 0;
+    state = (state + 0x6d2b79f5) | 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}

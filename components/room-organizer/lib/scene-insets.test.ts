@@ -1,0 +1,406 @@
+import { PerspectiveCamera, Vector3 } from 'three';
+import { describe, expect, it } from 'vitest';
+import { MIN_FOOTPRINT_PX, MIN_REGION_PX, ORBIT_FOV_DEG, ORBIT_LENS_SCALE, ORBIT_MAX_POLAR, WALK_FOV_DEG, clearOfGround, focusOffset, frameBox, orbitNear, frameInRegion, houseFrameBox, isCompactViewport, isSliver, regionViewOffset, visibleRegion } from './scene-insets';
+import type { FrameInput, Rect } from './scene-insets';
+
+const rect = (left: number, top: number, right: number, bottom: number): Rect => ({ left, top, right, bottom });
+
+describe('isCompactViewport', () => {
+  it('keeps the desktop framing only when the viewport is both wide and tall', () => {
+    expect(isCompactViewport(1440, 900)).toBe(false);
+    expect(isCompactViewport(1101, 701)).toBe(false);
+    expect(isCompactViewport(1100, 900)).toBe(true);
+    expect(isCompactViewport(1440, 700)).toBe(true);
+    expect(isCompactViewport(390, 664)).toBe(true);
+  });
+});
+
+describe('visibleRegion', () => {
+  const screen = rect(0, 0, 390, 664);
+
+  it('is the whole canvas when nothing covers it', () => {
+    expect(visibleRegion(screen, [])).toEqual(screen);
+  });
+
+  it('ignores occluders outside the canvas', () => {
+    expect(visibleRegion(screen, [rect(400, 0, 500, 100), rect(0, -80, 390, 0)])).toEqual(screen);
+  });
+
+  it('is the band between a top bar and a bottom HUD', () => {
+    expect(visibleRegion(screen, [rect(8, 8, 382, 60), rect(0, 380, 390, 664)])).toEqual(rect(0, 60, 390, 380));
+  });
+
+  it('picks the largest free rectangle around a side column', () => {
+    // Left column, top 60–300, 100 wide; bottom HUD from 400.
+    const region = visibleRegion(screen, [rect(0, 60, 100, 300), rect(0, 400, 390, 664)]);
+    // Full width above the column loses to the band right of it.
+    expect(region).toEqual(rect(100, 0, 390, 400));
+  });
+
+  it('falls back to the whole canvas when only a sliver is free', () => {
+    expect(visibleRegion(screen, [rect(0, 40, 390, 664)])).toEqual(screen);
+    expect(visibleRegion(screen, [rect(50, 0, 390, 664)])).toEqual(screen);
+  });
+
+  it('keeps a small but real band', () => {
+    // The old 30%-of-the-canvas rule threw this 390x64 band away.
+    expect(visibleRegion(screen, [rect(0, 64, 390, 664)])).toEqual(rect(0, 0, 390, 64));
+  });
+
+  it('keeps the band above an unfolded Paint panel on a landscape phone', () => {
+    // iPhone 13 landscape, walls up, a wall's Paint panel unfolded (measured).
+    const occluders = [
+      rect(8, 8, 52, 52), rect(430, 8, 742, 62), rect(60, 8, 296, 52),
+      rect(6, 168, 571, 260), rect(575, 168, 744, 232), rect(6, 264, 418, 338), rect(424, 278, 744, 338),
+    ];
+    expect(visibleRegion(rect(0, 0, 750, 342), occluders)).toEqual(rect(0, 62, 750, 168));
+  });
+
+  it('keeps the band beside the touch column on a portrait phone with Paint unfolded', () => {
+    // The same phone rotated to 342x750: 242x201 free, under 30% of the height.
+    const occluders = [
+      rect(8, 8, 52, 52), rect(82, 8, 334, 62), rect(8, 64, 100, 252),
+      rect(6, 263, 336, 548), rect(6, 552, 336, 604), rect(6, 608, 336, 682), rect(6, 686, 332, 746),
+    ];
+    expect(visibleRegion(rect(0, 0, 342, 750), occluders)).toEqual(rect(100, 62, 342, 263));
+  });
+
+  it('isSliver is under MIN_REGION_PX on either side', () => {
+    expect(isSliver(rect(0, 0, 500, MIN_REGION_PX - 1))).toBe(true);
+    expect(isSliver(rect(0, 0, MIN_REGION_PX - 1, 500))).toBe(true);
+    expect(isSliver(rect(0, 0, MIN_REGION_PX, MIN_REGION_PX))).toBe(false);
+  });
+
+  it('never overlaps an occluder', () => {
+    const occluders = [rect(10, 10, 120, 50), rect(250, 12, 380, 90), rect(0, 300, 120, 360), rect(0, 360, 390, 664)];
+    const region = visibleRegion(screen, occluders);
+    for (const o of occluders) {
+      const overlap = region.left < o.right && o.left < region.right && region.top < o.bottom && o.top < region.bottom;
+      expect(overlap).toBe(false);
+    }
+    // 390×210 under the top-right pill beats 270×270 beside the column.
+    expect(region).toEqual(rect(0, 90, 390, 300));
+  });
+});
+
+/** Projects the box corners through a real three camera; returns their pixel bounds. */
+function projectedBounds(input: FrameInput): Rect {
+  const frame = frameBox(input);
+  const camera = new PerspectiveCamera(input.fovDeg, input.canvasWidth / input.canvasHeight, 0.3, 1000);
+  camera.position.set(...frame.position);
+  camera.lookAt(...frame.target);
+  camera.setViewOffset(input.canvasWidth, input.canvasHeight, frame.offsetX, frame.offsetY, input.canvasWidth, input.canvasHeight);
+  camera.updateMatrixWorld();
+  const out = rect(Infinity, Infinity, -Infinity, -Infinity);
+  for (const x of [input.boxMin[0], input.boxMax[0]]) {
+    for (const y of [input.boxMin[1], input.boxMax[1]]) {
+      for (const z of [input.boxMin[2], input.boxMax[2]]) {
+        const p = new Vector3(x, y, z).project(camera);
+        const px = ((p.x + 1) / 2) * input.canvasWidth;
+        const py = ((1 - p.y) / 2) * input.canvasHeight;
+        out.left = Math.min(out.left, px);
+        out.right = Math.max(out.right, px);
+        out.top = Math.min(out.top, py);
+        out.bottom = Math.max(out.bottom, py);
+      }
+    }
+  }
+  return out;
+}
+
+describe('orbit lens (#753)', () => {
+  it('stands back by the ratio that keeps the same view height', () => {
+    const halfHeight = (fovDeg: number, distance: number) => Math.tan((fovDeg * Math.PI) / 360) * distance;
+    expect(ORBIT_LENS_SCALE).toBeCloseTo(2.108, 3);
+    expect(halfHeight(ORBIT_FOV_DEG, 10 * ORBIT_LENS_SCALE)).toBeCloseTo(halfHeight(WALK_FOV_DEG, 10), 10);
+  });
+
+  it('frames a house about as tall through the new lens, further out', () => {
+    const frame = (fovDeg: number) =>
+      frameBox({ canvasWidth: 390, canvasHeight: 664, region: rect(0, 60, 390, 380), fovDeg, boxMin: [-4, 0, -4], boxMax: [4, 3, 4], direction: [0, 1, 1] });
+    const wide = frame(WALK_FOV_DEG);
+    const lens = frame(ORBIT_FOV_DEG);
+    expect(lens.position[2]).toBeGreaterThan(wide.position[2] * 1.8);
+    expect(lens.extentWidth / wide.extentWidth).toBeGreaterThan(0.9);
+  });
+});
+
+describe('focusOffset (#753)', () => {
+  const room = { storeyHeight: 3, building: { width: 10, height: 8 }, walls: [] };
+
+  it('stands back in proportion to the item, with a floor for small ones', () => {
+    expect(focusOffset({ x: 0, z: 0 }, 0.3, null)[1]).toBeCloseTo(3.2);
+    expect(focusOffset({ x: 0, z: 0 }, 2, null)[1]).toBeCloseTo(5.12);
+    expect(focusOffset({ x: 0, z: 0 }, 2, null)[0]).toBeCloseTo(3.84);
+  });
+
+  it('stays under the ceiling and inside the walls when covered', () => {
+    const [x, y, z] = focusOffset({ x: 4, z: 3 }, 2, room);
+    expect(y).toBeLessThan(room.storeyHeight);
+    expect(x).toBeLessThan(0);
+    expect(z).toBeLessThan(0);
+    expect(4 + x).toBeGreaterThan(-5);
+    expect(3 + z).toBeGreaterThan(-4);
+    const small = focusOffset({ x: 0, z: 0 }, 6, { storeyHeight: 3, building: { width: 4, height: 4 }, walls: [] });
+    expect(Math.abs(small[0])).toBeCloseTo(1.7);
+  });
+
+  it('never looks through a partition', () => {
+    const walls = [{ x1: 2, z1: 1, x2: 5, z2: 1 }, { x1: 2, z1: 1, x2: 2, z2: 4 }];
+    const target = { x: 3.4, z: 2.9 };
+    const [x, , z] = focusOffset(target, 2, { storeyHeight: 3, building: { width: 10, height: 8 }, walls });
+    const camera = { x: target.x + x, z: target.z + z };
+    expect(camera.x).toBeGreaterThan(2);
+    expect(camera.x).toBeLessThan(5);
+    expect(camera.z).toBeGreaterThan(1);
+    expect(camera.z).toBeLessThan(4);
+  });
+
+  it('sees a garden item from the side away from the house', () => {
+    const [x, y, z] = focusOffset({ x: -6.3, z: 0 }, 1, { storeyHeight: 3, building: { width: 8, height: 6 }, walls: [] });
+    expect(x).toBeLessThan(0);
+    expect(y).toBeGreaterThan(3);
+    expect(Math.abs(z)).toBeGreaterThan(0);
+  });
+
+  it('treats the notch of an L as the garden', () => {
+    const building = { width: 10, height: 8, cutout: { corner: 'ne', width: 4, depth: 3 } } as const;
+    const [x] = focusOffset({ x: 4, z: -3 }, 1, { storeyHeight: 3, building, walls: [] });
+    expect(x).toBeGreaterThan(0);
+  });
+});
+
+describe('clearOfGround (#753)', () => {
+  it('lifts a camera under a slope and leaves one above it alone', () => {
+    expect(clearOfGround(3.39, 6)).toBe(6.5);
+    expect(clearOfGround(9, 6)).toBe(9);
+  });
+});
+
+describe('orbitNear (#753)', () => {
+  it('holds 0.3 m at house distance and moves out with a far camera', () => {
+    expect(orbitNear(5)).toBe(0.3);
+    expect(orbitNear(18)).toBe(0.3);
+    expect(orbitNear(190)).toBeCloseTo(3.17, 2);
+  });
+});
+
+describe('orbit tilt limit (#753)', () => {
+  it('leaves at least 10° of sky above the horizon through the lens', () => {
+    const pitchBelowHorizon = 90 - ORBIT_MAX_POLAR * (180 / Math.PI);
+    expect(ORBIT_FOV_DEG / 2 - pitchBelowHorizon).toBeGreaterThan(10);
+  });
+});
+
+describe('frameBox', () => {
+  const base: FrameInput = {
+    canvasWidth: 390,
+    canvasHeight: 664,
+    region: rect(0, 60, 390, 380),
+    fovDeg: 75,
+    boxMin: [-4, 0, -4],
+    boxMax: [4, 3, 4],
+    direction: [0, 1, 1],
+    margin: 0.05,
+  };
+
+  it('orbits the box centre along the requested direction', () => {
+    const frame = frameBox(base);
+    expect(frame.target).toEqual([0, 1.5, 0]);
+    const d = [frame.position[0] - 0, frame.position[1] - 1.5, frame.position[2] - 0];
+    expect(d[0]).toBeCloseTo(0);
+    expect(d[1]).toBeCloseTo(d[2]!);
+  });
+
+  it('fits every corner inside the visible region, touching its margin', () => {
+    for (const input of [
+      base,
+      { ...base, direction: [0.6, 0.7, 0.6] as const },
+      { ...base, region: rect(100, 0, 390, 400) },
+      { ...base, canvasWidth: 750, canvasHeight: 342, region: rect(0, 50, 520, 342) },
+      { ...base, boxMax: [4, 9, 4] as const },
+    ]) {
+      const bounds = projectedBounds(input);
+      const { region } = input;
+      const slackX = Math.min(bounds.left - region.left, region.right - bounds.right);
+      const slackY = Math.min(bounds.top - region.top, region.bottom - bounds.bottom);
+      expect(slackX).toBeGreaterThan(-1e-6);
+      expect(slackY).toBeGreaterThan(-1e-6);
+      // Tight: the binding corner sits exactly on the margin.
+      const marginX = ((region.right - region.left) * 0.05) / 1.1;
+      const marginY = ((region.bottom - region.top) * 0.05) / 1.1;
+      expect(Math.min(Math.abs(slackX - marginX), Math.abs(slackY - marginY))).toBeLessThan(0.01);
+    }
+  });
+
+  it('shifts the projection centre to the middle of the region', () => {
+    const frame = frameBox(base);
+    expect(frame.offsetX).toBe(0);
+    expect(frame.offsetY).toBe(664 / 2 - 220);
+  });
+
+  it('moves the camera back when the region shrinks', () => {
+    // A short band binds on height: the house must sit farther away to fit.
+    const wide = frameBox({ ...base, region: rect(0, 0, 390, 664) });
+    const band = frameBox({ ...base, region: rect(0, 60, 390, 220) });
+    const dist = (f: typeof wide) => Math.hypot(f.position[0] - f.target[0], f.position[1] - f.target[1], f.position[2] - f.target[2]);
+    expect(dist(band)).toBeGreaterThan(dist(wide));
+  });
+});
+
+describe('frameBox extent', () => {
+  it('reports the projected size of the box, matching a real projection', () => {
+    const input: FrameInput = {
+      canvasWidth: 390,
+      canvasHeight: 664,
+      region: rect(0, 60, 390, 380),
+      fovDeg: 75,
+      boxMin: [-4, 0, -4],
+      boxMax: [4, 3, 4],
+      direction: [0.6, 0.7, 0.6],
+    };
+    const frame = frameBox(input);
+    const bounds = projectedBounds(input);
+    expect(frame.extentWidth).toBeCloseTo(bounds.right - bounds.left, 3);
+    expect(frame.extentHeight).toBeCloseTo(bounds.bottom - bounds.top, 3);
+    // The floor face is part of the box, so never larger than it.
+    expect(frame.floorExtent).toBeLessThanOrEqual(Math.max(frame.extentWidth, frame.extentHeight) + 1e-9);
+    expect(frame.floorExtent).toBeGreaterThan(0);
+  });
+
+  it('measures the floor face alone, which matters for a tall box', () => {
+    const tall = frameBox({
+      canvasWidth: 390,
+      canvasHeight: 664,
+      region: rect(0, 0, 390, 664),
+      fovDeg: 75,
+      boxMin: [-4, 0, -4],
+      boxMax: [4, 12, 4],
+      direction: [0, 1, 1],
+    });
+    const floor = projectedBounds({
+      canvasWidth: 390,
+      canvasHeight: 664,
+      region: rect(0, 0, 390, 664),
+      fovDeg: 75,
+      boxMin: [-4, 0, -4],
+      boxMax: [4, 12, 4],
+      direction: [0, 1, 1],
+    });
+    expect(tall.floorExtent).toBeLessThan(Math.max(floor.right - floor.left, floor.bottom - floor.top));
+  });
+});
+
+describe('regionViewOffset', () => {
+  it('moves the projection centre to the middle of the region', () => {
+    expect(regionViewOffset(390, 664, rect(0, 60, 390, 380))).toEqual({ offsetX: 0, offsetY: 332 - 220 });
+    expect(regionViewOffset(750, 342, rect(0, 0, 750, 342))).toEqual({ offsetX: 0, offsetY: 0 });
+    expect(regionViewOffset(750, 342, rect(150, 50, 750, 250))).toEqual({ offsetX: -75, offsetY: 21 });
+  });
+});
+
+describe('frameInRegion', () => {
+  const base: FrameInput = {
+    canvasWidth: 750,
+    canvasHeight: 342,
+    region: rect(0, 60, 750, 280),
+    fovDeg: 75,
+    boxMin: [-4, 0, -4],
+    boxMax: [4, 3, 4],
+    direction: [0, 1, 1],
+  };
+
+  it('keeps a real band even when the house comes out small in it', () => {
+    // iPad Mini landscape, walls up: the 970x345 strip between the top
+    // pills and the dock. The house framed in it is small next to the
+    // canvas's short side, and the old 35% floor sent it under the panels.
+    const ipad: FrameInput = {
+      canvasWidth: 1024,
+      canvasHeight: 768,
+      region: rect(0, 132, 970, 477),
+      fovDeg: 75,
+      ...houseFrameBox({ width: 8, depth: 8, height: 3, roof: { peak: 2.5, overhang: 0.35 } }),
+      direction: [0.6, 0.7, 0.6],
+    };
+    const framed = frameInRegion(ipad);
+    expect(framed.fellBack).toBe(false);
+    expect(framed).toMatchObject(frameBox(ipad));
+    expect(framed.floorExtent).toBeLessThan(768 * 0.35);
+  });
+
+  it('keeps a 106 px landscape band above an unfolded panel', () => {
+    const framed = frameInRegion({ ...base, region: rect(0, 62, 750, 168) });
+    expect(framed.fellBack).toBe(false);
+  });
+
+  it('frames the measured bands well above the thumbnail floor', () => {
+    const house = houseFrameBox({ width: 8, depth: 8, height: 3, roof: { peak: 2.5, overhang: 0.35 } });
+    const cases: FrameInput[] = [
+      { canvasWidth: 1024, canvasHeight: 768, region: rect(0, 132, 970, 477), fovDeg: 75, ...house, direction: [0.6, 0.7, 0.6] },
+      { canvasWidth: 750, canvasHeight: 342, region: rect(0, 62, 750, 168), fovDeg: 75, ...house, direction: [0.6, 0.7, 0.6] },
+      { canvasWidth: 342, canvasHeight: 750, region: rect(100, 62, 342, 263), fovDeg: 75, ...house, direction: [0.6, 0.7, 0.6] },
+    ];
+    for (const input of cases) {
+      const framed = frameInRegion(input);
+      expect(framed.fellBack).toBe(false);
+      expect(framed.floorExtent).toBeGreaterThan(MIN_FOOTPRINT_PX);
+    }
+  });
+
+  it('falls back when a mis-measured occluder leaves a thumbnail the whole canvas frames far larger', () => {
+    // A tall tower in a 70 px square: its footprint comes out a few pixels wide.
+    const tower: FrameInput = { ...base, region: rect(300, 100, 370, 170), boxMin: [-2, 0, -2], boxMax: [2, 30, 2] };
+    expect(frameBox(tower).floorExtent).toBeLessThan(MIN_FOOTPRINT_PX);
+    const framed = frameInRegion(tower);
+    expect(framed.fellBack).toBe(true);
+    expect(framed).toMatchObject(frameBox({ ...tower, region: rect(0, 0, 750, 342) }));
+  });
+
+  it('keeps a thumbnail when the whole canvas would not frame it much larger', () => {
+    // Already a thumbnail on the whole canvas: the band is no worse.
+    const needle: FrameInput = { ...base, region: rect(0, 0, 750, 300), boxMin: [-0.5, 0, -0.5], boxMax: [0.5, 200, 0.5] };
+    expect(frameBox(needle).floorExtent).toBeLessThan(MIN_FOOTPRINT_PX);
+    expect(frameInRegion(needle).fellBack).toBe(false);
+  });
+
+  it('falls back to the whole canvas for a sliver', () => {
+    const framed = frameInRegion({ ...base, region: rect(150, 60, 750, 60 + MIN_REGION_PX - 1) });
+    expect(framed.fellBack).toBe(true);
+    expect(framed).toMatchObject(frameBox({ ...base, region: rect(0, 0, 750, 342) }));
+  });
+});
+
+describe('houseFrameBox', () => {
+  it('is the footprint up to the eaves while the roof is hidden', () => {
+    expect(houseFrameBox({ width: 8, depth: 6, height: 3, roof: null })).toEqual({ boxMin: [-4, 0, -3], boxMax: [4, 3, 3] });
+  });
+
+  it('adds the roof rise and the eave overhang while the roof shows', () => {
+    expect(houseFrameBox({ width: 8, depth: 6, height: 6, roof: { peak: 2.5, overhang: 0.35 } })).toEqual({
+      boxMin: [-4.35, 0, -3.35],
+      boxMax: [4.35, 8.5, 3.35],
+    });
+  });
+
+  it('keeps a degenerate footprint at least a metre wide', () => {
+    expect(houseFrameBox({ width: 0, depth: 0, height: 0, roof: null })).toEqual({ boxMin: [-0.5, 0, -0.5], boxMax: [0.5, 0, 0.5] });
+  });
+
+  it('fits the eaves on an iPhone SE with the walls up', () => {
+    // 8 × 8 m, one storey, gable rising min(2.5, 8.7/2) = 2.5 m: framed in the
+    // whole SE canvas, every eave corner stays on screen.
+    const input: FrameInput = {
+      canvasWidth: 320,
+      canvasHeight: 568,
+      region: rect(0, 0, 320, 568),
+      fovDeg: 75,
+      ...houseFrameBox({ width: 8, depth: 8, height: 3, roof: { peak: 2.5, overhang: 0.35 } }),
+      direction: [0.6, 0.7, 0.6],
+    };
+    const bounds = projectedBounds(input);
+    expect(bounds.left).toBeGreaterThan(0);
+    expect(bounds.right).toBeLessThan(320);
+    expect(bounds.top).toBeGreaterThan(0);
+    expect(bounds.bottom).toBeLessThan(568);
+  });
+});

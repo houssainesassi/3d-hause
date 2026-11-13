@@ -1,0 +1,292 @@
+import { floorKeepOut } from './floor-keep-out';
+import { hasCollisions, itemInBounds, type CollisionContext } from './geometry';
+import { MAX_LAYOUT_JSON_BYTES, parseStoredLayout } from './schema';
+import { storeyHeight } from './storeys';
+import type { FurnitureItem, RoomLayout } from './types';
+
+const HASH_PREFIX = '#layout=';
+/**
+ * Version prefix for compressed payloads: `#layout=2.<base64url(deflate-raw(json))>`.
+ * Legacy (v1) links carry un-prefixed `base64url(json)`; base64url never contains
+ * a dot, so the prefix is unambiguous. Decoding supports both forever; encoding
+ * always emits v2.
+ */
+const V2_PREFIX = '2.';
+/** The newest payload version this build reads (and the one it writes). */
+const SHARE_FORMAT_VERSION = 2;
+const MAX_REASONABLE_URL_LENGTH = 12_000;
+/**
+ * Longest `#layout=…` hash decoding will touch (#332). The app never makes
+ * one past MAX_REASONABLE_URL_LENGTH, so this leaves five times that for
+ * links from older versions — while a crafted 270 KB hash, which inflates
+ * to 200 MB, is refused before a single byte is inflated.
+ */
+export const MAX_SHARE_HASH_LENGTH = 64 * 1024;
+
+/**
+ * Why a share hash didn't open: far too big to be a house, made by a newer
+ * version of the app (a payload version this one doesn't know), or not
+ * readable as one — truncated or corrupt.
+ */
+export type ShareDecodeFailure = 'too-large' | 'newer-version' | 'unreadable';
+
+/** What to tell the player about a link that didn't open (#607). */
+export function shareFailureMessage(reason: ShareDecodeFailure): string {
+  switch (reason) {
+    case 'too-large':
+      return 'This link is far larger than any house, so it was not opened.';
+    case 'newer-version':
+      return 'This link was made by a newer version of the app, so it can’t be opened here. Reload the page to get the latest version.';
+    case 'unreadable':
+      return 'This link is broken or incomplete — it may have been cut off when it was copied.';
+  }
+}
+
+export type ShareDecodeResult =
+  | { ok: true; layout: RoomLayout }
+  | { ok: false; reason: ShareDecodeFailure };
+
+export interface EncodeShareUrlResult {
+  url: string;
+  /** True when the layout had a floor-plan image that was stripped to keep the URL compact. */
+  strippedFloorPlan: boolean;
+}
+
+/**
+ * How far past the cap the cheap estimate may land and still be measured
+ * exactly (#611). The estimate's JSON is never longer than the real link's,
+ * so only deflate's small swings separate the two.
+ */
+const CHEAP_ESTIMATE_SLACK = 1.05;
+
+/**
+ * The share link for a layout. A house whose link can't fit gets back a
+ * link over the cap that is only good for saying so: rounding every item
+ * against every other is O(n²) per storey, seconds for thousands of items
+ * (#611), so a cheap estimate is measured first.
+ */
+export async function encodeShareUrl(
+  layout: RoomLayout,
+  origin: string
+): Promise<EncodeShareUrlResult> {
+  const stripped = layout.floorPlanImage !== undefined;
+  // Every item rounded, with none given back its exact place: the shortest
+  // JSON the real link can have.
+  const estimate = await encodeShareable(roundLayoutBlindly(layout), origin);
+  if (estimate.length > MAX_REASONABLE_URL_LENGTH * CHEAP_ESTIMATE_SLACK) {
+    return { url: estimate, strippedFloorPlan: stripped };
+  }
+  return { url: await encodeShareable(roundLayoutForShare(layout), origin), strippedFloorPlan: stripped };
+}
+
+async function encodeShareable(layout: RoomLayout, origin: string): Promise<string> {
+  const shareable: RoomLayout = { ...layout };
+  delete shareable.floorPlanImage;
+  const json = JSON.stringify(shareable);
+  const compressed = await deflateRaw(new TextEncoder().encode(json));
+  return `${origin}${HASH_PREFIX}${V2_PREFIX}${bytesToBase64Url(compressed)}`;
+}
+
+function roundLayoutBlindly(layout: RoomLayout): RoomLayout {
+  return { ...layout, floors: layout.floors.map((floor) => ({ ...floor, items: floor.items.map(roundItem) })) };
+}
+
+const QUARTER_TURN = Math.PI / 2;
+
+/** Millimetres for positions; 3 decimals of a radian (0.06°) for rotations. */
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * Exact quarter turns pass through unrounded: 1.571 instead of π/2 gives a
+ * rotated item a 0.02 % sliver of extra footprint, enough for two abutting
+ * rotated items to collide after the link opens.
+ */
+function roundRotation(rotation: number): number {
+  const turns = rotation / QUARTER_TURN;
+  return Math.abs(turns - Math.round(turns)) < 1e-9 ? rotation : round3(rotation);
+}
+
+function roundItem(item: FurnitureItem): FurnitureItem {
+  // Stairs cut the storey above's keep-out (#372); they stay exact so no
+  // other floor's collision state can move.
+  if (item.type === 'stairs' || (!item.position && item.rotation === undefined)) return item;
+  return {
+    ...item,
+    ...(item.position ? { position: { x: round3(item.position.x), z: round3(item.position.z) } } : {}),
+    ...(item.rotation !== undefined ? { rotation: roundRotation(item.rotation) } : {}),
+  };
+}
+
+/** Restore passes before a floor falls back to its exact items; each pass is O(n²). */
+const MAX_ROUNDING_PASSES = 4;
+
+/**
+ * One storey's items rounded, except where rounding would change what the
+ * editor computes. A wall-flush item sits at an irrational or float-noisy
+ * `roomWidth / 2 − halfWidth`, and the nearest millimetre can be 0.5 mm
+ * outside; abutting items can overlap by as much. Every item whose bounds
+ * or collision state differs from the exact layout's gets its exact
+ * position and rotation back, as do the items whose pairing with it
+ * changed, until nothing differs.
+ */
+function roundFloorItems(layout: RoomLayout, floorIndex: number): FurnitureItem[] {
+  const floor = layout.floors[floorIndex]!;
+  const exact = floor.items;
+  const { width, height } = layout;
+  // The editor's own context (furniture-scene); stairs aren't rounded, so
+  // the keep-out is the same for both layouts.
+  const context: CollisionContext = {
+    keepOut: floorKeepOut(layout, floorIndex),
+    interiorWalls: floor.interiorWalls,
+    storeyHeight: storeyHeight(floor),
+  };
+  const status = (item: FurnitureItem, items: readonly FurnitureItem[]): number =>
+    item.position
+      ? (itemInBounds(item, width, height) ? 1 : 0) + (hasCollisions(item, items, width, height, context) ? 2 : 0)
+      : 0;
+  const pairCollides = (a: FurnitureItem, b: FurnitureItem): boolean =>
+    hasCollisions(a, [a, b], width, height, context);
+
+  const expected = exact.map((item) => status(item, exact));
+  const items = exact.map(roundItem);
+  for (let pass = 0; pass < MAX_ROUNDING_PASSES; pass++) {
+    const changed = items.flatMap((item, i) => (status(item, items) === expected[i] ? [] : [i]));
+    if (changed.length === 0) return items;
+    for (const i of changed) {
+      for (let j = 0; j < items.length; j++) {
+        if (j !== i && items[j] !== exact[j] && pairCollides(exact[i]!, items[j]!) !== pairCollides(exact[i]!, exact[j]!)) {
+          items[j] = exact[j]!;
+        }
+      }
+      items[i] = exact[i]!;
+    }
+  }
+  return items.every((item, i) => status(item, items) === expected[i]) ? items : [...exact];
+}
+
+/**
+ * The layout with item positions rounded to millimetres and rotations to 3
+ * decimals (#192). Free drags leave ~17 significant digits per coordinate,
+ * which is most of a share payload. Rounding never changes an item's bounds
+ * or collision state (see roundFloorItems). Encode-time only: the layout
+ * passed in is not touched.
+ */
+export function roundLayoutForShare(layout: RoomLayout): RoomLayout {
+  return { ...layout, floors: layout.floors.map((floor, index) => ({ ...floor, items: roundFloorItems(layout, index) })) };
+}
+
+/**
+ * True when a URL hash carries a share payload (starts with `#layout=`),
+ * regardless of whether that payload decodes cleanly. Lets callers distinguish
+ * "no share link" from "a share link that failed to decode" so a corrupt link
+ * can surface user feedback instead of silently falling back to the local save.
+ */
+export function isShareHash(hash: string): boolean {
+  return hash.startsWith(HASH_PREFIX) && hash.length > HASH_PREFIX.length;
+}
+
+/** True when a share hash is short enough to be worth decoding at all (#332). */
+export function isShareHashWithinBudget(hash: string): boolean {
+  return hash.length <= MAX_SHARE_HASH_LENGTH;
+}
+
+export async function decodeShareUrl(hash: string): Promise<RoomLayout | null> {
+  const result = await readShareHash(hash);
+  return result.ok ? result.layout : null;
+}
+
+/**
+ * `decodeShareUrl` that says why it failed. A hash over the length budget is
+ * refused before decoding, and the inflated payload is read in chunks and
+ * dropped as soon as it passes MAX_LAYOUT_JSON_BYTES, so a deflate bomb
+ * costs a few milliseconds instead of the tab (#332).
+ */
+export async function readShareHash(hash: string): Promise<ShareDecodeResult> {
+  if (!isShareHash(hash)) return { ok: false, reason: 'unreadable' };
+  if (!isShareHashWithinBudget(hash)) return { ok: false, reason: 'too-large' };
+  const encoded = hash.slice(HASH_PREFIX.length);
+  // base64url has no dot, so `<n>.` is always a payload version: one past
+  // what this build writes comes from a newer app.
+  const version = /^(\d+)\./.exec(encoded)?.[1];
+  if (version !== undefined && Number(version) > SHARE_FORMAT_VERSION) return { ok: false, reason: 'newer-version' };
+  try {
+    const jsonBytes = encoded.startsWith(V2_PREFIX)
+      ? await inflateRawBounded(base64UrlToBytes(encoded.slice(V2_PREFIX.length)), MAX_LAYOUT_JSON_BYTES)
+      : base64UrlToBytes(encoded);
+    if (!jsonBytes) return { ok: false, reason: 'too-large' };
+    // fatal: true so truncated/garbage byte sequences throw here (→ null)
+    // instead of silently decoding to replacement characters.
+    const json = new TextDecoder('utf-8', { fatal: true }).decode(jsonBytes);
+    const parsed: unknown = JSON.parse(json);
+    const layout = parseStoredLayout(parsed);
+    return layout ? { ok: true, layout } : { ok: false, reason: 'unreadable' };
+  } catch {
+    return { ok: false, reason: 'unreadable' };
+  }
+}
+
+export function isShareUrlReasonablySized(url: string): boolean {
+  return url.length <= MAX_REASONABLE_URL_LENGTH;
+}
+
+// CompressionStream/DecompressionStream are native in every modern browser and
+// in Node >= 18 (which covers the vitest node environment) — no dependency and
+// no node:zlib import needed. Piping through Blob/Response keeps error
+// propagation contained: a corrupt deflate stream rejects the arrayBuffer()
+// promise instead of raising an unhandled rejection.
+async function deflateRaw(bytes: Uint8Array<ArrayBuffer>): Promise<Uint8Array> {
+  return pumpThrough(bytes, new CompressionStream('deflate-raw'));
+}
+
+/** The inflated bytes, or null as soon as they pass `maxBytes`. */
+async function inflateRawBounded(bytes: Uint8Array<ArrayBuffer>, maxBytes: number): Promise<Uint8Array | null> {
+  const reader = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+async function pumpThrough(
+  bytes: Uint8Array<ArrayBuffer>,
+  transform: ReadableWritablePair<Uint8Array, BufferSource>
+): Promise<Uint8Array> {
+  const stream = new Blob([bytes]).stream().pipeThrough(transform);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+// btoa/atob are global in browsers and in Node >= 16, so these helpers work in
+// both the client bundle and the vitest node environment without shims.
+function bytesToBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000; // keep String.fromCharCode argument counts stack-safe
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function base64UrlToBytes(input: string): Uint8Array<ArrayBuffer> {
+  const padded = input.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((input.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}

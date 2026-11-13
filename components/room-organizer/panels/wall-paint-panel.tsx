@@ -1,0 +1,950 @@
+'use client';
+
+import { useEffect, useId, useRef, useState } from 'react';
+import { useRoomEditor } from '../contexts';
+import { onRovingKeyDown } from '../hooks/roving-keys';
+import { useScrollCue } from '../hooks/use-scroll-cue';
+import { ENTRANCE_WALL_ID } from '../lib/street';
+import { DEFAULT_INTERIOR_WALL_COLOR, wallSideColor, type SelectedWall, type WallSide } from '../lib/wall-sides';
+import { Icon } from '../plotcraft/icon';
+import { DockFoldButton, useDockFold, type PanelFold } from './dock-fold';
+import type {
+  FloorPattern,
+  InteriorWall,
+  WallId,
+  WallPattern,
+} from '../lib/types';
+
+// ============================================================================
+// Pattern + style metadata
+// ============================================================================
+
+const WALL_PATTERNS: ReadonlyArray<{ id: WallPattern; label: string; thumb: PatternThumbName }> = [
+  { id: 'solid',     label: 'Solid',     thumb: 'solid'   },
+  { id: 'siding',    label: 'Siding',    thumb: 'siding'  },
+  { id: 'brick',     label: 'Brick',     thumb: 'brick'   },
+  { id: 'panel',     label: 'Panel',     thumb: 'panel'   },
+  { id: 'wallpaper', label: 'Paper',     thumb: 'dots'    },
+  { id: 'plaster',   label: 'Plaster',   thumb: 'speckle' },
+];
+
+const FLOOR_PATTERNS: ReadonlyArray<{ id: FloorPattern; label: string; thumb: PatternThumbName }> = [
+  { id: 'wood',     label: 'Wood',     thumb: 'wood'    },
+  { id: 'tile',     label: 'Tile',     thumb: 'tile'    },
+  { id: 'carpet',   label: 'Carpet',   thumb: 'speckle' },
+  { id: 'concrete', label: 'Concrete', thumb: 'solid'   },
+  { id: 'solid',    label: 'Solid',    thumb: 'solid'   },
+];
+
+// ============================================================================
+// Colour palettes — Interactive, grouped by mood the way the reference does
+// ============================================================================
+
+interface SwatchGroup {
+  id: string;
+  label: string;
+  colors: readonly string[];
+}
+
+const WALL_PALETTES: readonly SwatchGroup[] = [
+  {
+    id: 'pastel',
+    label: 'Pastels',
+    colors: [
+      '#e8dcc4', '#ffffff', '#fff4d6', '#ffe9b0',
+      '#b8e0c4', '#a8d8e8', '#d6c4e8', '#fce4ec',
+      '#f5b7a8', '#ffd1b3', '#c4d4b0', '#a0c5c5',
+    ],
+  },
+  {
+    id: 'warm',
+    label: 'Warm',
+    colors: [
+      '#d4a373', '#c9885a', '#b06a3b', '#8b5a3c',
+      '#f7c873', '#e9a13c', '#c47a2a', '#7a4f2a',
+      '#c93b3b', '#a02828', '#d9908e', '#cf6f7d',
+    ],
+  },
+  {
+    id: 'cool',
+    label: 'Cool',
+    colors: [
+      '#7aa9d6', '#4a7fb7', '#2c5d9b', '#1d3f78',
+      '#4fa8a5', '#2e7d7a', '#1b5e60', '#114448',
+      '#a48ad4', '#6f4c9b', '#4b2e7a', '#2d1b54',
+    ],
+  },
+  {
+    id: 'neutral',
+    label: 'Neutral',
+    colors: [
+      '#ffffff', '#f0ece4', '#d8d8d8', '#b0b0b0',
+      '#888888', '#5a5a5a', '#2d2d2d', '#1a1a1a',
+      '#dccab0', '#bca58a', '#8a7560', '#4a3a2a',
+    ],
+  },
+];
+
+const FLOOR_PALETTES: readonly SwatchGroup[] = [
+  {
+    id: 'wood',
+    label: 'Wood',
+    colors: [
+      '#e5c8a0', '#d4b896', '#c9a57d', '#b08858',
+      '#8b5a3c', '#6b4226', '#5d3a23', '#3e261a',
+    ],
+  },
+  {
+    id: 'stone',
+    label: 'Stone',
+    colors: [
+      '#f0e8da', '#d8c4a0', '#b4afa3', '#8a8580',
+      '#b0b0b0', '#7c7c7c', '#444448', '#2d2d2d',
+    ],
+  },
+  {
+    id: 'bold',
+    label: 'Bold',
+    colors: [
+      '#c93b3b', '#1d3f78', '#2e7d7a', '#6f4c9b',
+      '#e9a13c', '#a02828', '#1b5e60', '#4b2e7a',
+    ],
+  },
+];
+
+// ============================================================================
+// Apply-to + active-tab state
+// ============================================================================
+
+/** Unpainted exterior walls render in this colour (room-builder's default). */
+const DEFAULT_EXTERIOR_WALL_COLOR = '#e8dcc4';
+const EXTERIOR_WALLS: readonly WallId[] = ['north', 'east', 'south', 'west'];
+
+/** The colour every entry shares, or undefined if they differ. */
+function sharedColor(colors: readonly string[]): string | undefined {
+  const [first, ...rest] = colors;
+  if (first === undefined) return undefined;
+  return rest.every((color) => color.toLowerCase() === first.toLowerCase()) ? first : undefined;
+}
+
+const APPLY_TARGETS: ReadonlyArray<{ id: WallId | 'all'; label: string }> = [
+  { id: 'all',   label: 'All' },
+  { id: 'north', label: 'N' },
+  { id: 'east',  label: 'E' },
+  { id: 'south', label: 'S' },
+  { id: 'west',  label: 'W' },
+];
+
+type Surface = 'walls' | 'floor';
+
+export interface WallPaintPanelProps {
+  /** Optional pre-selected wall (from 3D click) — pre-targets the Apply-to chip. */
+  selectedWall: SelectedWall | null;
+  onSelectedWallChange(wall: SelectedWall | null): void;
+  /** Folded or not in the phone dock; the HUD unfolds one wall panel at a time. */
+  fold?: PanelFold;
+  /**
+   * Keep the panel up with no wall selected. Clearing the wall from the
+   * keyboard would otherwise close it under the focus; the hold ends when the
+   * focus leaves the panel.
+   */
+  onHoldOpen?(held: boolean): void;
+}
+
+/**
+ * Interactive wall + floor finish picker. Surface tabs (Walls / Floor),
+ * pattern row with mini thumbnails, then a categorized swatch palette with
+ * mood tabs (Pastels / Warm / Cool / Neutral on walls, Wood / Stone / Bold on
+ * floors) — roughly 48 wall colours and 24 floor colours one click away.
+ */
+export function WallPaintPanel(props: WallPaintPanelProps): JSX.Element {
+  const { activeFloor: floor, actions } = useRoomEditor();
+  const fold = useDockFold(props.fold);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { onHoldOpen } = props;
+  useEffect(() => {
+    if (!onHoldOpen) return undefined;
+    // A press on the scene moves no focus, so the panel's blur can't end it.
+    const onPress = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) onHoldOpen(false);
+    };
+    document.addEventListener('pointerdown', onPress, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPress, true);
+      onHoldOpen(false);
+    };
+  }, [onHoldOpen]);
+  // Unfolded in the dock the panel scrolls on its own: say so.
+  useScrollCue(rootRef, `${fold.open}`);
+
+  const applyWallColor = (target: WallId | 'all', color: string) => {
+    // A selected INTERIOR wall gets painted itself — previously an interior
+    // selection fell through to 'all' and silently repainted the four
+    // exterior walls instead (#122).
+    if (selectedInteriorId !== null) {
+      actions.setInteriorWallColor(selectedInteriorId, color, props.selectedWall?.side);
+      return;
+    }
+    if (target === 'all') {
+      actions.setWallColor('north', color);
+      actions.setWallColor('south', color);
+      actions.setWallColor('east', color);
+      actions.setWallColor('west', color);
+    } else {
+      actions.setWallColor(target, color);
+    }
+  };
+  const surfaceId = useId();
+  const paletteId = useId();
+  const [surface, setSurface] = useState<Surface>('walls');
+  const [wallGroup, setWallGroup] = useState<string>('pastel');
+  const [floorGroup, setFloorGroup] = useState<string>('wood');
+
+  // Apply-to driven by the 3D click selection: when the user clicks a wall in
+  // the world, the chip jumps to that wall automatically; otherwise default
+  // to "All".
+  const selectedExteriorId =
+    props.selectedWall && props.selectedWall.kind === 'exterior'
+      ? (props.selectedWall.id as WallId)
+      : null;
+  const selectedInteriorId =
+    props.selectedWall && props.selectedWall.kind === 'interior' ? props.selectedWall.id : null;
+  // An interior selection paints only that wall, so no exterior chip is the
+  // target — showing "All" checked promised a repaint that never happened (#221).
+  const applyTo: WallId | 'all' | null = selectedInteriorId ? null : selectedExteriorId ?? 'all';
+
+  const currentWallPattern = floor.wallPattern ?? 'solid';
+  const currentFloorPattern = floor.floorPattern ?? 'solid';
+  const exteriorColor = (wall: WallId) => floor.wallColors?.[wall] ?? DEFAULT_EXTERIOR_WALL_COLOR;
+  const selectedPartition = selectedInteriorId ? floor.interiorWalls?.find((wall) => wall.id === selectedInteriorId) : undefined;
+  const currentWallColor = selectedInteriorId
+    ? selectedPartition ? wallSideColor(selectedPartition, props.selectedWall?.side ?? 'a') : DEFAULT_INTERIOR_WALL_COLOR
+    : selectedExteriorId
+      ? exteriorColor(selectedExteriorId)
+      : sharedColor(EXTERIOR_WALLS.map(exteriorColor));
+
+  const activeWallPalette =
+    WALL_PALETTES.find((g) => g.id === wallGroup) ?? WALL_PALETTES[0]!;
+  const activeFloorPalette =
+    FLOOR_PALETTES.find((g) => g.id === floorGroup) ?? FLOOR_PALETTES[0]!;
+
+  return (
+    <div
+      ref={rootRef}
+      className={`pointer-events-auto pc-glass pc-wall-paint${fold.open ? '' : ' pc-dock-folded'}`}
+      data-scene-occluder=""
+      style={{ width: 280, padding: '10px 12px' }}
+      onBlur={(event) => {
+        // Switching windows or opening the native colour picker is not leaving.
+        if (!document.hasFocus()) return;
+        if (!event.currentTarget.contains(event.relatedTarget)) onHoldOpen?.(false);
+      }}
+    >
+      {/* Title + Surface toggle */}
+      <div
+        className="pc-paint-head"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 6,
+          marginBottom: fold.open ? 8 : 0,
+        }}
+      >
+        {fold.docked ? (
+          <DockFoldButton label="Paint" icon="sparkle" open={fold.open} onToggle={fold.toggle} />
+        ) : (
+        <div
+          className="pc-hud-header"
+          style={{
+            fontSize: 11,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+          }}
+        >
+          <Icon name="sparkle" size={12} />
+          Paint
+        </div>
+        )}
+        {fold.open && <SurfaceTabs surface={surface} onChange={setSurface} baseId={surfaceId} />}
+      </div>
+
+      {fold.open && (
+        <div role="tabpanel" id={panelId(surfaceId)} aria-labelledby={tabId(surfaceId, surface)}>
+      {surface === 'walls' ? (
+        <>
+          <SectionLabel>Wall Pattern</SectionLabel>
+          <PatternGrid>
+            {WALL_PATTERNS.map((p) => (
+              <PatternTile
+                key={p.id}
+                label={p.label}
+                thumb={p.thumb}
+                active={currentWallPattern === p.id}
+                onClick={() => actions.setWallPattern(p.id)}
+              />
+            ))}
+          </PatternGrid>
+
+          <SectionLabel>
+            Apply To
+            {props.selectedWall && (
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontFamily: 'var(--pc-font-display)',
+                  fontWeight: 700,
+                  fontSize: 9,
+                  color: 'var(--pc-cyan-glow)',
+                }}
+              >
+                {selectedInteriorId ? '· Interior wall selected' : '· Wall selected'}
+              </span>
+            )}
+          </SectionLabel>
+          <ApplyToggle
+            value={applyTo}
+            onChange={(v, fromKeyboard) => {
+              // Only the keyboard holds: a mouse click on All closes as ever.
+              onHoldOpen?.(v === 'all' && fromKeyboard);
+              if (v === 'all') {
+                props.onSelectedWallChange(null);
+              } else {
+                props.onSelectedWallChange({ id: v, kind: 'exterior' });
+              }
+            }}
+          />
+
+          {selectedPartition && props.selectedWall && (
+            <SideToggle
+              wall={selectedPartition}
+              value={props.selectedWall.side}
+              onChange={(side) => {
+                const { side: _side, ...wall } = props.selectedWall!;
+                props.onSelectedWallChange(side ? { ...wall, side } : wall);
+              }}
+            />
+          )}
+
+          {selectedInteriorId && selectedInteriorId !== ENTRANCE_WALL_ID && (
+            <button
+              type="button"
+              className="pc-remove-wall"
+              onClick={(event) => {
+                // A keyboard click (detail 0) keeps the panel, as Apply To does.
+                onHoldOpen?.(event.detail === 0);
+                actions.removeInteriorWall(selectedInteriorId);
+                props.onSelectedWallChange(null);
+              }}
+            >
+              <Icon name="demolish" size={12} />
+              Demolish wall
+            </button>
+          )}
+
+          <SectionLabel>Wall Visibility</SectionLabel>
+          <WallVisibilityToggle
+            hiddenWalls={floor.hiddenWalls ?? []}
+            onToggle={(wallId) => actions.toggleExteriorWall(wallId)}
+          />
+
+          <SectionLabel>Wall Colour · {activeWallPalette.label}</SectionLabel>
+          <GroupTabs
+            groups={WALL_PALETTES}
+            active={wallGroup}
+            onChange={setWallGroup}
+            label="Wall colour palette"
+            baseId={paletteId}
+          />
+          <SwatchGrid
+            tabpanelOf={{ id: panelId(paletteId), tab: tabId(paletteId, wallGroup) }}
+            swatches={activeWallPalette.colors}
+            value={currentWallColor}
+            onChange={(color) => applyWallColor(applyTo ?? 'all', color)}
+            onCustomChange={(color) => applyWallColor(applyTo ?? 'all', color)}
+          />
+        </>
+      ) : (
+        <>
+          <SectionLabel>Floor Pattern</SectionLabel>
+          <PatternGrid>
+            {FLOOR_PATTERNS.map((p) => (
+              <PatternTile
+                key={p.id}
+                label={p.label}
+                thumb={p.thumb}
+                active={currentFloorPattern === p.id}
+                onClick={() => actions.setFloorPattern(p.id)}
+              />
+            ))}
+          </PatternGrid>
+
+          <SectionLabel>Floor Colour · {activeFloorPalette.label}</SectionLabel>
+          <GroupTabs
+            groups={FLOOR_PALETTES}
+            active={floorGroup}
+            onChange={setFloorGroup}
+            label="Floor colour palette"
+            baseId={paletteId}
+          />
+          <SwatchGrid
+            tabpanelOf={{ id: panelId(paletteId), tab: tabId(paletteId, floorGroup) }}
+            swatches={activeFloorPalette.colors}
+            value={floor.floorColor}
+            onChange={(color) => actions.setFloorColor(color)}
+            onCustomChange={(color) => actions.setFloorColor(color)}
+          />
+        </>
+      )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+const tabId = (baseId: string, tab: string): string => `${baseId}-tab-${tab}`;
+const panelId = (baseId: string): string => `${baseId}-panel`;
+
+interface SurfaceTabsProps {
+  surface: Surface;
+  onChange(surface: Surface): void;
+  /** Ties the tabs to the panel below them. */
+  baseId: string;
+}
+
+function SurfaceTabs({ surface, onChange, baseId }: SurfaceTabsProps): JSX.Element {
+  const tabs: ReadonlyArray<{ id: Surface; label: string }> = [
+    { id: 'walls', label: 'Walls' },
+    { id: 'floor', label: 'Floor' },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Paint surface"
+      className="pc-glass--inset pc-paint-tabs"
+      style={{
+        display: 'inline-flex',
+        gap: 3,
+      }}
+    >
+      {tabs.map((t) => {
+        const active = surface === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={tabId(baseId, t.id)}
+            aria-selected={active}
+            aria-controls={panelId(baseId)}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(t.id)}
+            onKeyDown={(event) => onRovingKeyDown(event, (index) => {
+              const next = tabs[index];
+              if (next) onChange(next.id);
+            })}
+            className={`pc-tile${active ? ' pc-tile--active' : ''}`}
+            style={{
+              padding: '4px 10px',
+              height: 22,
+              borderRadius: 5,
+              fontFamily: 'var(--pc-font-display)',
+              fontWeight: 800,
+              fontSize: 9,
+              letterSpacing: 'var(--pc-tr-caps)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const SIDE_TARGETS: ReadonlyArray<{ id: WallSide | undefined; label: string; title: string }> = [
+  { id: 'a', label: 'Side A', title: 'Paint side A only' },
+  { id: 'b', label: 'Side B', title: 'Paint side B only' },
+  { id: undefined, label: 'Both', title: 'Paint both sides' },
+];
+
+interface SideToggleProps {
+  wall: InteriorWall;
+  /** Undefined: both faces. */
+  value: WallSide | undefined;
+  onChange(side: WallSide | undefined): void;
+}
+
+/** Which face of a partition takes the paint (#720); the dots show what each has now. */
+function SideToggle({ wall, value, onChange }: SideToggleProps): JSX.Element {
+  return (
+    <div role="radiogroup" aria-label="Paint which side" className="pc-glass--inset pc-paint-row" style={{ display: 'flex', gap: 3 }}>
+      {SIDE_TARGETS.map((target) => {
+        const active = value === target.id;
+        return (
+          <button
+            key={target.label}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(target.id)}
+            onKeyDown={(event) =>
+              onRovingKeyDown(event, (next) => {
+                const landed = SIDE_TARGETS[next];
+                if (landed) onChange(landed.id);
+              })
+            }
+            title={target.title}
+            className={`pc-tile${active ? ' pc-tile--active' : ''}`}
+            style={{
+              flex: 1,
+              minHeight: 22,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              borderRadius: 6,
+              fontFamily: 'var(--pc-font-display)',
+              fontWeight: 800,
+              fontSize: 9,
+              letterSpacing: 'var(--pc-tr-caps)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {target.id && (
+              <span
+                aria-hidden="true"
+                style={{ width: 8, height: 8, borderRadius: 2, border: '1px solid rgba(255,255,255,0.6)', background: wallSideColor(wall, target.id) }}
+              />
+            )}
+            {target.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface ApplyToggleProps {
+  /** null: nothing checked (an interior wall is the target). */
+  value: WallId | 'all' | null;
+  onChange(v: WallId | 'all', fromKeyboard: boolean): void;
+}
+
+function ApplyToggle({ value, onChange }: ApplyToggleProps): JSX.Element {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Apply paint to"
+      className="pc-glass--inset pc-paint-row"
+      style={{
+        display: 'flex',
+        gap: 3,
+      }}
+    >
+      {APPLY_TARGETS.map((target, index) => {
+        const active = value === target.id;
+        return (
+          <button
+            key={target.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            // Nothing checked (an interior wall): the first stays reachable.
+            tabIndex={active || (value === null && index === 0) ? 0 : -1}
+            // Space on a radio is a click with no pointer: detail 0.
+            onClick={(event) => onChange(target.id, event.detail === 0)}
+            onKeyDown={(event) => onRovingKeyDown(event, (next) => {
+              const landed = APPLY_TARGETS[next];
+              if (landed) onChange(landed.id, true);
+            })}
+            title={target.id === 'all' ? 'Apply to every exterior wall' : `Apply to ${target.id} wall only`}
+            className={`pc-tile${active ? ' pc-tile--active' : ''}`}
+            style={{
+              flex: 1,
+              height: 22,
+              borderRadius: 6,
+              fontFamily: 'var(--pc-font-display)',
+              fontWeight: 800,
+              fontSize: 9,
+              letterSpacing: 'var(--pc-tr-caps)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {target.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface WallVisibilityToggleProps {
+  hiddenWalls: readonly WallId[];
+  onToggle(wallId: WallId): void;
+}
+
+const VISIBILITY_WALLS: ReadonlyArray<{ id: WallId; label: string }> = [
+  { id: 'north', label: 'N' },
+  { id: 'east',  label: 'E' },
+  { id: 'south', label: 'S' },
+  { id: 'west',  label: 'W' },
+];
+
+function WallVisibilityToggle({ hiddenWalls, onToggle }: WallVisibilityToggleProps): JSX.Element {
+  return (
+    <div
+      role="group"
+      aria-label="Wall visibility"
+      className="pc-glass--inset pc-paint-row"
+      style={{
+        display: 'flex',
+        gap: 3,
+      }}
+    >
+      {VISIBILITY_WALLS.map((wall) => {
+        const hidden = hiddenWalls.includes(wall.id);
+        return (
+          <button
+            key={wall.id}
+            type="button"
+            aria-pressed={!hidden}
+            onClick={() => onToggle(wall.id)}
+            title={hidden ? `Restore ${wall.id} wall` : `Remove ${wall.id} wall (open side)`}
+            className={`pc-tile${!hidden ? ' pc-tile--active' : ''}`}
+            style={{
+              flex: 1,
+              height: 22,
+              borderRadius: 6,
+              fontFamily: 'var(--pc-font-display)',
+              fontWeight: 800,
+              fontSize: 9,
+              letterSpacing: 'var(--pc-tr-caps)',
+              textTransform: 'uppercase',
+              opacity: hidden ? 0.45 : 1,
+              textDecoration: hidden ? 'line-through' : 'none',
+            }}
+          >
+            {wall.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+interface GroupTabsProps {
+  groups: readonly SwatchGroup[];
+  active: string;
+  onChange(id: string): void;
+  label: string;
+  /** Ties the tabs to the swatch grid. */
+  baseId: string;
+}
+
+function GroupTabs({ groups, active, onChange, label, baseId }: GroupTabsProps): JSX.Element {
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className="pc-paint-row"
+      style={{
+        display: 'flex',
+        gap: 3,
+        marginBottom: 4,
+      }}
+    >
+      {groups.map((g) => {
+        const isActive = g.id === active;
+        return (
+          <button
+            key={g.id}
+            type="button"
+            role="tab"
+            id={tabId(baseId, g.id)}
+            aria-selected={isActive}
+            aria-controls={panelId(baseId)}
+            tabIndex={isActive ? 0 : -1}
+            onClick={() => onChange(g.id)}
+            onKeyDown={(event) => onRovingKeyDown(event, (index) => {
+              const next = groups[index];
+              if (next) onChange(next.id);
+            })}
+            className={`pc-tile${isActive ? ' pc-tile--active' : ''}`}
+            style={{
+              flex: 1,
+              height: 20,
+              borderRadius: 6,
+              padding: '0 4px',
+              fontFamily: 'var(--pc-font-display)',
+              fontWeight: 700,
+              fontSize: 8,
+              letterSpacing: 'var(--pc-tr-caps)',
+              textTransform: 'uppercase',
+            }}
+          >
+            {g.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <p
+      className="pc-hud-header"
+      style={{
+        fontSize: 9,
+        opacity: 0.9,
+        marginTop: 6,
+        marginBottom: 4,
+        paddingLeft: 2,
+      }}
+    >
+      {children}
+    </p>
+  );
+}
+
+function PatternGrid({ children }: { children: React.ReactNode }): JSX.Element {
+  return (
+    <div
+      className="pc-glass--inset pc-paint-patterns"
+      style={{
+        borderRadius: 10,
+        padding: 4,
+        boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.35)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(6, 1fr)',
+        gap: 4,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+interface PatternTileProps {
+  label: string;
+  thumb: PatternThumbName;
+  active: boolean;
+  onClick(): void;
+}
+
+function PatternTile({ label, thumb, active, onClick }: PatternTileProps): JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      aria-pressed={active}
+      className={`pc-tile${active ? ' pc-tile--active' : ''}`}
+      style={{
+        height: 36,
+        padding: 2,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 1,
+        overflow: 'hidden',
+      }}
+    >
+      <PatternThumb name={thumb} />
+      <span
+        style={{
+          fontFamily: 'var(--pc-font-display)',
+          fontWeight: 700,
+          fontSize: 7,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          color: active ? 'var(--pc-cyan-glow)' : 'var(--pc-paper-soft)',
+          lineHeight: 1,
+        }}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+type PatternThumbName =
+  | 'solid'
+  | 'siding'
+  | 'brick'
+  | 'panel'
+  | 'dots'
+  | 'speckle'
+  | 'wood'
+  | 'tile';
+
+function PatternThumb({ name }: { name: PatternThumbName }): JSX.Element {
+  const common = { width: 22, height: 12 };
+  switch (name) {
+    case 'siding':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(255,255,255,0.20)" />
+          <path d="M0 3 L22 3 M0 6 L22 6 M0 9 L22 9" stroke="rgba(0,0,0,0.35)" strokeWidth="0.6" />
+        </svg>
+      );
+    case 'brick':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(179,86,61,0.5)" />
+          <path d="M0 4 L22 4 M0 8 L22 8 M5 0 L5 4 M16 0 L16 4 M11 4 L11 8 M6 8 L6 12 M16 8 L16 12" stroke="rgba(0,0,0,0.35)" strokeWidth="0.5" />
+        </svg>
+      );
+    case 'panel':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(185,133,81,0.55)" />
+          <path d="M5.5 0 L5.5 12 M11 0 L11 12 M16.5 0 L16.5 12" stroke="rgba(0,0,0,0.40)" strokeWidth="0.6" />
+        </svg>
+      );
+    case 'dots':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(232,220,196,0.7)" />
+          {[2, 7, 12, 17].flatMap((x, i) =>
+            [3, 7, 11].map((y, j) => (
+              <circle key={`${i}-${j}`} cx={x + (j % 2 ? 2 : 0)} cy={y} r="0.7" fill="rgba(0,0,0,0.40)" />
+            ))
+          )}
+        </svg>
+      );
+    case 'speckle':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(217,201,168,0.6)" />
+          {Array.from({ length: 22 }).map((_, i) => (
+            <circle
+              key={i}
+              cx={(i * 11) % 22}
+              cy={(i * 5) % 12}
+              r="0.45"
+              fill="rgba(0,0,0,0.30)"
+            />
+          ))}
+        </svg>
+      );
+    case 'wood':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(201,165,125,0.85)" />
+          <path d="M0 4 L22 4 M0 8 L22 8" stroke="rgba(0,0,0,0.45)" strokeWidth="0.6" />
+          <path d="M6 0 L6 4 M14 4 L14 8 M9 8 L9 12" stroke="rgba(0,0,0,0.35)" strokeWidth="0.5" />
+        </svg>
+      );
+    case 'tile':
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(240,232,218,0.85)" />
+          <path d="M11 0 L11 12 M0 6 L22 6" stroke="rgba(0,0,0,0.40)" strokeWidth="0.6" />
+        </svg>
+      );
+    case 'solid':
+    default:
+      return (
+        <svg viewBox="0 0 22 12" {...common} aria-hidden>
+          <rect width="22" height="12" fill="rgba(255,255,255,0.20)" />
+        </svg>
+      );
+  }
+}
+
+interface SwatchGridProps {
+  swatches: readonly string[];
+  value: string | undefined;
+  onChange(color: string): void;
+  onCustomChange?(color: string): void;
+  /** The grid is the panel of the palette tabs above it. */
+  tabpanelOf: { id: string; tab: string };
+}
+
+function SwatchGrid({ swatches, value, onChange, onCustomChange, tabpanelOf }: SwatchGridProps): JSX.Element {
+  const normalized = (value ?? '').toLowerCase();
+  return (
+    <div
+      role="tabpanel"
+      id={tabpanelOf.id}
+      aria-labelledby={tabpanelOf.tab}
+      className="pc-glass--inset pc-paint-swatches"
+      style={{
+        borderRadius: 10,
+        padding: 4,
+        boxShadow: 'inset 0 2px 6px rgba(0,0,0,0.35)',
+        display: 'grid',
+        gridTemplateColumns: 'repeat(8, 1fr)',
+        gap: 3,
+      }}
+    >
+      {swatches.map((swatch) => {
+        const active = swatch.toLowerCase() === normalized;
+        return (
+          <button
+            key={swatch}
+            type="button"
+            onClick={() => onChange(swatch)}
+            aria-label={`Use colour ${swatch}`}
+            aria-pressed={active}
+            title={swatch}
+            style={{
+              height: 22,
+              borderRadius: 5,
+              backgroundColor: swatch,
+              border: active ? '2px solid var(--pc-cyan-glow)' : '1px solid rgba(255,255,255,0.30)',
+              boxShadow: active ? 'var(--pc-halo-cyan-soft)' : 'inset 0 1px 0 rgba(255,255,255,0.40)',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          />
+        );
+      })}
+      {onCustomChange && (
+        <label
+          className="pc-colour-well"
+          title="Pick a custom colour"
+          style={{
+            height: 22,
+            borderRadius: 5,
+            border: '1px dashed rgba(255,255,255,0.45)',
+            background:
+              'conic-gradient(from 0deg, #ff5b6a, #ffd24a, #79e08a, #4fc3f7, #c77bff, #ff5b6a)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            position: 'relative',
+            overflow: 'hidden',
+            gridColumn: 'span 1',
+          }}
+        >
+          <input
+            type="color"
+            aria-label="Custom colour"
+            value={value ?? '#ffffff'}
+            onChange={(event) => onCustomChange(event.target.value)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              opacity: 0,
+              cursor: 'pointer',
+              border: 'none',
+              padding: 0,
+            }}
+          />
+        </label>
+      )}
+    </div>
+  );
+}

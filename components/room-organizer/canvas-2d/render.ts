@@ -1,0 +1,1229 @@
+import {
+  CURRENCY_SYMBOL,
+  DEFAULT_FLOOR_PLAN_OPACITY,
+  DEFAULT_VISION_FOV_DEG,
+  DEFAULT_VISION_RANGE_M,
+  GRID_SIZE_METERS,
+} from '../lib/constants';
+import { floorKeepOut } from '../lib/floor-keep-out';
+import { computeFloorPlanPlacement } from '../lib/floor-plan-fit';
+import { cutoutRect, rotatedHalfExtents, shellWalls } from '../lib/footprint';
+import { formatMetres, formatSize } from '../lib/format';
+import { INTERIOR_WALL_THICKNESS, isOpening } from '../lib/opening-snap';
+import { floorBelowUnderlay, type PlanSegment } from '../lib/plan-export/plan-geometry';
+import { planDrawOrder } from '../lib/plan-order';
+import { boundsSize, offPlanMarkers, PLAN_PADDING_PX, planLegendSpot, regionFitScale, type OffPlanItem, type PlanBounds } from '../lib/plan-view-fit';
+import { entrancePlanOutline, planFloorIndex } from '../lib/street';
+import { hasFloorFinish, regionShape, zoneArea, zoneFloorPatches, zoneLabelSpot, zoneRings, type ZoneRect, type ZoneShape } from '../lib/zones';
+import { drawOpeningSymbol, traceOpeningGaps } from './opening-symbol';
+import { drawSelectedWall, drawStampGhost, drawWallPreview, drawWallSideMark, drawZoneHandles, type StampGhost, type WallPreview } from './plan-edit';
+import { drawStairCutHatch, drawStairsSymbol, drawStairwellHoles } from './stairs-symbol';
+import type { DetectedRoom } from '../lib/room-detect';
+import type { Insets, Rect } from '../lib/scene-insets';
+import type { FloorLayout, FurnitureItem, RoomLayout, WallId } from '../lib/types';
+import type { WallSide } from '../lib/wall-sides';
+
+export { computeFloorPlanPlacement } from '../lib/floor-plan-fit';
+
+export interface Render2DOptions {
+  canvas: HTMLCanvasElement;
+  /** The building (used for width/height and the optional floor-plan image). */
+  layout: RoomLayout;
+  /** The floor to render — its items, floor colour, etc. */
+  floor: FloorLayout;
+  selectedItemId: string | null;
+  /** Multi-select extras — outlined like the primary so group state is visible (#118). */
+  extraSelectedIds?: ReadonlySet<string>;
+  showMeasurements: boolean;
+  showWiFiSignals: boolean;
+  showHeatmap?: boolean;
+  /** Paint the storey below faintly under the grid (#624). Only the full-size plan passes it. */
+  showFloorBelow?: boolean;
+  /** The zone rectangle being dragged out, drawn over everything as a dashed outline (#155). */
+  zoneDraft?: ZoneRect | null;
+  /** Detected rooms with no zone, marked in zone mode for "Name this room" (#719). */
+  roomsToName?: readonly DetectedRoom[] | undefined;
+  /** The face of the selected wall that paint goes to, marked on the plan (#720). */
+  selectedWallSide?: WallSide | undefined;
+  /** The interior wall selected on the plan (#564). */
+  selectedWallId?: string | null | undefined;
+  /** A held wall move can't land here: the wall shows it (#718). */
+  selectedWallRefused?: boolean | undefined;
+  /** The zone with resize handles (#628). */
+  selectedZoneId?: string | null | undefined;
+  /** The wall tool's draft, drawn over everything (#564). */
+  wallPreview?: WallPreview | null | undefined;
+  /** The room stamp in hand (#724). */
+  stampGhost?: StampGhost | null | undefined;
+  hasCollision: (item: FurnitureItem) => boolean;
+  /**
+   * Margin (CSS px) around the room. The default suits the full-screen 2D
+   * view; small consumers (the 180×130 minimap) must pass a small value or
+   * the margin consumes the whole canvas (#118).
+   */
+  padding?: number;
+  /**
+   * Backing pixels per logical px for a canvas that isn't in the page, which
+   * has no CSS size to derive it from: the printed blueprint (#619).
+   */
+  pixelRatio?: number;
+  /**
+   * Canvas edges covered by the HUD (`get2DViewTransform`). Only the
+   * full-screen plan on a compact viewport passes them; undefined is none.
+   */
+  insets?: Insets | undefined;
+  /** The HUD panels over the canvas (CSS px), which the heatmap legend keeps clear of (#567). */
+  hudRects?: readonly Rect[] | undefined;
+  /**
+   * Fit this world rectangle (metres, room-centred) instead of the room
+   * (`get2DViewTransform`'s `bounds`). The on-screen plan and the minimap
+   * pass `planViewBounds` (#381), the blueprint its content bounds (#377), so
+   * items past the walls are drawn rather than clipped by the canvas edge.
+   * Undefined fits the room alone, as the library thumbnails do.
+   */
+  fitBounds?: PlanBounds | undefined;
+  /**
+   * Items too far out to fit (`planViewFit`): drawn as markers on the edge
+   * of `fitBounds`, pointing towards them, so they stay findable (#381).
+   */
+  offPlan?: readonly OffPlanItem[] | undefined;
+  /**
+   * A small plan (the minimap, a thumbnail): zone names are left off below
+   * `ZONE_LABEL_MIN_SCALE` and off-plan markers are bare arrows (#433). The
+   * full-size plan only drops a name wider than its zone.
+   */
+  thumbnail?: boolean;
+}
+
+const PADDING = PLAN_PADDING_PX;
+
+/** The world→canvas mapping the 2D renderer draws with (CSS-pixel space). */
+export interface View2DTransform {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
+}
+
+/**
+ * The exact fit-and-centre transform `render2DTopDown` paints with, exposed so
+ * pointer handling and drop placement can invert it (#166, #219). The renderer
+ * itself calls this, so the two can never diverge.
+ *
+ * `bounds` is what is fitted (world metres, room-centred): the room, or the
+ * room and the items outside it (`planViewBounds`, #381). The transform
+ * still maps the room's corner, so every draw call keeps its form; only the
+ * offsets move when the bounds reach past the walls.
+ *
+ * `insets` are the canvas edges the HUD covers (a phone's dock and top
+ * pills, or the desktop panels over the plan): the plan is fitted and
+ * centred in what they leave free, with the margin shrunk to at most
+ * `INSET_PADDING_SHARE` of that area's short side so a short landscape band
+ * still shows a usable plan. Without insets (the minimap, the blueprint) the
+ * fit is the whole canvas, unchanged.
+ */
+export function get2DViewTransform(
+  canvasClientWidth: number,
+  canvasClientHeight: number,
+  layout: Pick<RoomLayout, 'width' | 'height'>,
+  padding: number = PADDING,
+  insets?: Insets,
+  bounds?: PlanBounds
+): View2DTransform {
+  const fit = bounds ?? { minX: -layout.width / 2, minZ: -layout.height / 2, maxX: layout.width / 2, maxZ: layout.height / 2 };
+  const content = boundsSize(fit);
+  // The canvas position of the room's corner, given where the fitted
+  // content's corner lands.
+  const place = (scale: number, left: number, top: number): View2DTransform => ({
+    scale,
+    offsetX: left + (-layout.width / 2 - fit.minX) * scale,
+    offsetY: top + (-layout.height / 2 - fit.minZ) * scale,
+  });
+  if (insets) {
+    const width = canvasClientWidth - insets.left - insets.right;
+    const height = canvasClientHeight - insets.top - insets.bottom;
+    const scale = regionFitScale(width, height, content, padding);
+    // HUD panels that leave no room to speak of: fit the whole canvas instead.
+    if (scale > 0) {
+      return place(scale, insets.left + (width - content.width * scale) / 2, insets.top + (height - content.height * scale) / 2);
+    }
+  }
+  const scale = Math.min(
+    (canvasClientWidth - padding * 2) / content.width,
+    (canvasClientHeight - padding * 2) / content.height
+  );
+  return place(scale, (canvasClientWidth - content.width * scale) / 2, (canvasClientHeight - content.height * scale) / 2);
+}
+
+/** Inverse of the renderer's mapping: canvas CSS px → world x/z (room-centred). */
+export function canvasToWorld(
+  px: number,
+  py: number,
+  transform: View2DTransform,
+  layout: Pick<RoomLayout, 'width' | 'height'>
+): { x: number; z: number } {
+  return {
+    x: (px - transform.offsetX) / transform.scale - layout.width / 2,
+    z: (py - transform.offsetY) / transform.scale - layout.height / 2,
+  };
+}
+
+// Decoded floor-plan image cache, keyed on the data-URL. Decoding a multi-MB
+// data-URL is async: the first render kicks off the load and re-renders once
+// the pixels are ready (so the image never paints over grid/furniture drawn
+// after it). Subsequent renders reuse the cached, already-decoded Image and
+// draw it synchronously in the correct layer order.
+let floorPlanImageCache: { url: string; image: HTMLImageElement } | null = null;
+
+/**
+ * Callbacks the consumers install so the async floor-plan decode can trigger
+ * a full repaint (redrawing the whole scene in the right layer order) once
+ * the image is ready. A set, not a single slot: the 2D view AND the minimap
+ * render concurrently, and a single-slot handler dropped whichever consumer
+ * didn't own it — the minimap never repainted after a decode (#118).
+ */
+const repaintHandlers = new Set<() => void>();
+
+/** Register a repaint handler; returns the disposer that unregisters it. */
+export function addFloorPlanRepaintHandler(handler: () => void): () => void {
+  repaintHandlers.add(handler);
+  return () => repaintHandlers.delete(handler);
+}
+
+function requestRepaint(): void {
+  for (const handler of repaintHandlers) handler();
+}
+const WIFI_RING_FILLS = ['rgba(0, 255, 0, 0.15)', 'rgba(255, 255, 0, 0.10)', 'rgba(255, 102, 0, 0.08)'];
+const WIFI_RING_STROKES = ['rgba(0, 255, 0, 0.4)', 'rgba(255, 255, 0, 0.3)', 'rgba(255, 102, 0, 0.2)'];
+const CCTV_RING_FILLS = ['rgba(0, 136, 255, 0.12)', 'rgba(0, 221, 255, 0.08)', 'rgba(136, 0, 255, 0.06)'];
+const CCTV_RING_STROKES = ['rgba(0, 136, 255, 0.4)', 'rgba(0, 221, 255, 0.3)', 'rgba(136, 0, 255, 0.2)'];
+
+export function render2DTopDown(options: Render2DOptions): void {
+  const { canvas, layout, floor } = options;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // The backing store is sized clientWidth/clientHeight × devicePixelRatio (by
+  // the ResizeObserver in use-scene-effects), but all drawing below works in
+  // CSS-pixel (logical) coordinates. Reset the transform to a DPR scale so 1
+  // logical unit maps to `dpr` device pixels — that keeps strokes and text
+  // crisp on retina while the layout maths stays resolution-independent.
+  const dpr = options.pixelRatio ?? canvas.width / Math.max(1, canvas.clientWidth || canvas.width);
+  const viewWidth = canvas.width / dpr;
+  const viewHeight = canvas.height / dpr;
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, viewWidth, viewHeight);
+
+  const { scale, offsetX, offsetY } = get2DViewTransform(viewWidth, viewHeight, layout, options.padding ?? PADDING, options.insets, options.fitBounds);
+
+  drawFloor(ctx, layout, floor, offsetX, offsetY, scale);
+  drawZoneFloors(ctx, layout, floor, offsetX, offsetY, scale);
+  if (options.showFloorBelow) drawFloorBelow(ctx, layout, planFloorIndex(layout.floors, floor), offsetX, offsetY, scale);
+  drawGrid(ctx, layout, offsetX, offsetY, scale);
+  // The stairwell the floor below cuts through this slab (#290), under everything placed over it.
+  drawStairwellHoles(ctx, layout, planFloorIndex(layout.floors, floor), { scale, offsetX, offsetY });
+  // Zone tints sit on the floor under the walls; their labels go over the
+  // walls but under the furniture, like a plan's room names (#155).
+  drawZoneFills(ctx, layout, floor, offsetX, offsetY, scale);
+  drawRoomOutline(ctx, layout, floor, offsetX, offsetY, scale);
+  drawInteriorWalls(ctx, layout, floor, offsetX, offsetY, scale);
+  drawOpeningGaps(ctx, layout, floor, offsetX, offsetY, scale, viewWidth, viewHeight);
+  drawZoneLabels(ctx, layout, floor, offsetX, offsetY, scale, options.showMeasurements, options.thumbnail === true);
+
+  const heatmapPeak = options.showHeatmap ? drawHeatmap(ctx, layout, floor.items, offsetX, offsetY, scale) : 0;
+
+  if (options.showWiFiSignals) {
+    drawSignalRings(ctx, floor.items, offsetX, offsetY, scale, layout, 'wifi');
+    drawSignalRings(ctx, floor.items, offsetX, offsetY, scale, layout, 'cctv');
+    drawVisionCones(ctx, floor.items, offsetX, offsetY, scale, layout);
+  }
+
+  drawFurniture(ctx, options, offsetX, offsetY, scale);
+
+  if (options.showMeasurements) {
+    drawRoomDimensions(ctx, layout, offsetX, offsetY, scale);
+  }
+
+  if (heatmapPeak > 0) {
+    const fit = options.fitBounds ?? { minX: -layout.width / 2, minZ: -layout.height / 2, maxX: layout.width / 2, maxZ: layout.height / 2 };
+    const plan: Rect = {
+      left: offsetX + (fit.minX + layout.width / 2) * scale,
+      top: offsetY + (fit.minZ + layout.height / 2) * scale,
+      right: offsetX + (fit.maxX + layout.width / 2) * scale,
+      bottom: offsetY + (fit.maxZ + layout.height / 2) * scale,
+    };
+    drawHeatmapLegend(ctx, heatmapPeak, planLegendSpot({ width: viewWidth, height: viewHeight }, plan, options.hudRects ?? [], HEATMAP_LEGEND_SIZE));
+  }
+
+  if (options.offPlan && options.offPlan.length > 0) {
+    const fit = options.fitBounds ?? { minX: -layout.width / 2, minZ: -layout.height / 2, maxX: layout.width / 2, maxZ: layout.height / 2 };
+    const markers = offPlanMarkers({ scale, offsetX, offsetY }, layout, fit, options.offPlan, options.thumbnail ? THUMB_MARKER_SPACING_PX : undefined);
+    drawOffPlanMarkers(ctx, markers, options.thumbnail === true);
+  }
+
+  if (options.roomsToName?.length) drawRoomsToName(ctx, layout, options.roomsToName, offsetX, offsetY, scale);
+
+  if (options.zoneDraft) {
+    drawZoneDraft(ctx, layout, options.zoneDraft, offsetX, offsetY, scale);
+  }
+
+  const selectedWall = options.selectedWallId ? floor.interiorWalls?.find((wall) => wall.id === options.selectedWallId) : null;
+  if (selectedWall) drawSelectedWall(ctx, layout, selectedWall, offsetX, offsetY, scale, options.selectedWallRefused);
+  if (selectedWall && options.selectedWallSide) drawWallSideMark(ctx, layout, selectedWall, options.selectedWallSide, offsetX, offsetY, scale);
+  const selectedZone = options.selectedZoneId ? floor.zones?.find((zone) => zone.id === options.selectedZoneId) : null;
+  if (selectedZone) drawZoneHandles(ctx, layout, selectedZone, offsetX, offsetY, scale);
+  if (options.wallPreview) drawWallPreview(ctx, layout, options.wallPreview, offsetX, offsetY, scale);
+  if (options.stampGhost) drawStampGhost(ctx, layout, options.stampGhost, offsetX, offsetY, scale);
+}
+
+/** A thumbnail's off-plan arrows are bare dots: fan them closer. */
+const THUMB_MARKER_SPACING_PX = 9;
+
+/**
+ * Off-plan markers (#381): a disc with the item's icon and its distance
+ * outside the walls, and an arrowhead pointing towards it. On a thumbnail,
+ * just the arrowhead.
+ */
+function drawOffPlanMarkers(
+  ctx: CanvasRenderingContext2D,
+  markers: ReturnType<typeof offPlanMarkers>,
+  thumbnail: boolean
+): void {
+  ctx.save();
+  for (const marker of markers) {
+    const radius = thumbnail ? 3 : 10;
+    ctx.save();
+    ctx.translate(marker.x, marker.y);
+    ctx.rotate(marker.angle);
+    ctx.fillStyle = '#1d4ed8';
+    ctx.beginPath();
+    ctx.moveTo(radius + (thumbnail ? 5 : 8), 0);
+    ctx.lineTo(radius - 1, thumbnail ? -3.5 : -6);
+    ctx.lineTo(radius - 1, thumbnail ? 3.5 : 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(marker.x, marker.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = thumbnail ? '#1d4ed8' : 'rgba(255, 255, 255, 0.95)';
+    ctx.fill();
+    if (!thumbnail) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#1d4ed8';
+      ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '11px Arial';
+      ctx.fillStyle = '#111';
+      ctx.fillText(marker.item.icon, marker.x, marker.y + 1);
+      ctx.font = 'bold 10px Arial';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      const label = `${Math.round(marker.distance)} m`;
+      const below = marker.y + radius + 9;
+      ctx.strokeText(label, marker.x, below);
+      ctx.fillStyle = '#1d4ed8';
+      ctx.fillText(label, marker.x, below);
+    }
+  }
+  ctx.restore();
+}
+
+/** Fill / outline alpha of a zone's tint, on top of the floor colour or tracing image. */
+const ZONE_FILL_ALPHA = 0.18;
+const ZONE_STROKE_ALPHA = 0.7;
+/** A zone painted smaller than this (px, either edge) is too small for a label. */
+const ZONE_MIN_LABEL_EDGE_PX = 36;
+/**
+ * Below this plan scale (px per metre) a thumbnail's zone names are left off
+ * (#433): the labels are a fixed 12 px, so on the minimap one name covered
+ * most of the map and hid the furniture under it. The full-size plan keeps
+ * them at any scale (a 10 m house on a phone is ~22 px/m), dropping only a
+ * name wider than its zone.
+ */
+const ZONE_LABEL_MIN_SCALE = 25;
+const ROOM_TO_NAME_LABEL = 'Name this room';
+
+/**
+ * `#rgb` / `#rrggbb` → `rgba(...)` at the given alpha. Anything else (a
+ * named colour from an imported file) is returned as-is: it still paints,
+ * just without the tint.
+ */
+function withAlpha(color: string, alpha: number): string {
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color)?.[1];
+  if (!hex) return color;
+  const full = hex.length === 3 ? hex.replace(/./g, (c) => c + c) : hex;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function zoneCanvasRect(
+  zone: ZoneRect,
+  layout: RoomLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): { x: number; y: number; w: number; h: number } {
+  return {
+    x: offsetX + (zone.x + layout.width / 2) * scale,
+    y: offsetY + (zone.z + layout.height / 2) * scale,
+    w: zone.w * scale,
+    h: zone.d * scale,
+  };
+}
+
+/** A polygon zone's outline and holes, as one path to fill even-odd. */
+function traceZoneRings(ctx: CanvasRenderingContext2D, layout: RoomLayout, zone: ZoneShape, offsetX: number, offsetY: number, scale: number): void {
+  ctx.beginPath();
+  for (const ring of zoneRings(zone)) {
+    ring.forEach((point, index) => {
+      const x = offsetX + (point.x + layout.width / 2) * scale;
+      const y = offsetY + (point.z + layout.height / 2) * scale;
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.closePath();
+  }
+}
+
+/**
+ * Rooms with a floor of their own (#720), over the storey's: the patches 3D
+ * lays, so a finish stops at the stairwell and the porch here too. The plan
+ * shows no floor pattern, for a room or a storey. A traced floor is the
+ * drawing, so it stays clear.
+ */
+function drawZoneFloors(ctx: CanvasRenderingContext2D, layout: RoomLayout, floor: FloorLayout, offsetX: number, offsetY: number, scale: number): void {
+  if (!floor.zones?.some(hasFloorFinish)) return;
+  if (layout.floorPlanImage && layout.floors[0]?.id === floor.id) return;
+  for (const patch of zoneFloorPatches(floor, floorKeepOut(layout, planFloorIndex(layout.floors, floor)))) {
+    ctx.fillStyle = patch.color;
+    for (const region of patch.regions) {
+      traceZoneRings(ctx, layout, regionShape(region), offsetX, offsetY, scale);
+      ctx.fill('evenodd');
+    }
+  }
+}
+
+/** Detected rooms with no zone yet: a dashed outline and what a tap does. */
+function drawRoomsToName(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  rooms: readonly DetectedRoom[],
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  ctx.save();
+  ctx.strokeStyle = '#1d4ed8';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  for (const room of rooms) {
+    traceZoneRings(ctx, layout, regionShape(room), offsetX, offsetY, scale);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 11px Arial';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.lineWidth = 3;
+  ctx.fillStyle = '#1d4ed8';
+  for (const room of rooms) {
+    const spot = zoneCanvasRect(zoneLabelSpot(regionShape(room)), layout, offsetX, offsetY, scale);
+    if (ctx.measureText(ROOM_TO_NAME_LABEL).width > spot.w - 4) continue;
+    const x = offsetX + (room.anchor.x + layout.width / 2) * scale;
+    const y = offsetY + (room.anchor.z + layout.height / 2) * scale;
+    ctx.strokeText(ROOM_TO_NAME_LABEL, x, y);
+    ctx.fillText(ROOM_TO_NAME_LABEL, x, y);
+  }
+  ctx.restore();
+}
+
+function drawZoneFills(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floor: FloorLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  const zones = floor.zones ?? [];
+  if (zones.length === 0) return;
+  ctx.save();
+  ctx.lineWidth = 1.5;
+  for (const zone of zones) {
+    ctx.fillStyle = withAlpha(zone.color, ZONE_FILL_ALPHA);
+    ctx.strokeStyle = withAlpha(zone.color, ZONE_STROKE_ALPHA);
+    if (zone.outline) {
+      traceZoneRings(ctx, layout, zone, offsetX, offsetY, scale);
+      ctx.fill('evenodd');
+      ctx.stroke();
+      continue;
+    }
+    const { x, y, w, h } = zoneCanvasRect(zone, layout, offsetX, offsetY, scale);
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeRect(x, y, w, h);
+  }
+  ctx.restore();
+}
+
+function drawZoneLabels(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floor: FloorLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number,
+  showArea: boolean,
+  thumbnail: boolean
+): void {
+  const zones = floor.zones ?? [];
+  if (zones.length === 0 || (thumbnail && scale < ZONE_LABEL_MIN_SCALE)) return;
+  const recess = entrancePlanOutline(layout, planFloorIndex(layout.floors, floor));
+  ctx.save();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  // A white halo keeps the name legible over any floor colour or tracing image.
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+  ctx.lineWidth = 3;
+  ctx.fillStyle = '#333';
+  for (const zone of zones) {
+    const { x, y, w, h } = zoneCanvasRect(zoneLabelSpot(zone), layout, offsetX, offsetY, scale);
+    if (Math.min(w, h) < ZONE_MIN_LABEL_EDGE_PX) continue;
+    // Along the top edge rather than the centre: the centre of a room is
+    // where its bed or table sits, and the furniture paints over labels.
+    const cx = x + w / 2;
+    const area = showArea ? `${zoneArea(zone, recess).toFixed(1)} m²` : null;
+    ctx.font = 'bold 12px Arial';
+    // A name wider than its zone would spill over the neighbouring rooms.
+    if (ctx.measureText(zone.name).width > w - 4) continue;
+    ctx.strokeText(zone.name, cx, y + 11);
+    ctx.fillText(zone.name, cx, y + 11);
+    if (area) {
+      ctx.font = '10px Arial';
+      ctx.strokeText(area, cx, y + 25);
+      ctx.fillText(area, cx, y + 25);
+    }
+  }
+  ctx.restore();
+}
+
+function drawZoneDraft(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  draft: ZoneRect,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  const { x, y, w, h } = zoneCanvasRect(draft, layout, offsetX, offsetY, scale);
+  ctx.save();
+  ctx.fillStyle = 'rgba(59, 130, 246, 0.12)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#3b82f6';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeRect(x, y, w, h);
+  ctx.setLineDash([]);
+  ctx.font = '10px Arial';
+  ctx.fillStyle = '#1d4ed8';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(formatSize(draft.w, draft.d, 1), x + w / 2, y - 4);
+  ctx.restore();
+}
+
+function drawFloor(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floor: FloorLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  // The tracing image belongs to the ground floor only, like in 3D
+  // (use-scene-effects keys it on floor index 0) — painting it under every
+  // storey put the ground-floor scan in upstairs blueprints (#218). Derived
+  // here from data both callers already pass, so no caller can forget it.
+  const isGroundFloor = layout.floors[0] === floor || layout.floors[0]?.id === floor.id;
+  const url = isGroundFloor ? layout.floorPlanImage : undefined;
+  if (url) {
+    // Fill the floor colour first so there's a base while (or if) the image is
+    // still decoding — avoids a flash of the raw canvas background.
+    ctx.fillStyle = floor.floorColor;
+    ctx.fillRect(offsetX, offsetY, layout.width * scale, layout.height * scale);
+
+    // naturalWidth guard: a broken image also reports `complete`, and
+    // drawImage on it throws InvalidStateError — which would abort the whole
+    // paint (grid and furniture never drawn) on every repaint (#118).
+    if (floorPlanImageCache?.url === url && floorPlanImageCache.image.complete) {
+      const img = floorPlanImageCache.image;
+      if (img.naturalWidth > 0) {
+        const { source, dest } = computeFloorPlanPlacement(
+          img.naturalWidth,
+          img.naturalHeight,
+          layout.width / layout.height,
+          layout.floorPlanFitMode ?? 'stretch'
+        );
+        const roomW = layout.width * scale;
+        const roomH = layout.height * scale;
+        ctx.globalAlpha = layout.floorPlanOpacity ?? DEFAULT_FLOOR_PLAN_OPACITY;
+        ctx.drawImage(
+          img,
+          source.x,
+          source.y,
+          source.w,
+          source.h,
+          offsetX + dest.x * roomW,
+          offsetY + dest.y * roomH,
+          dest.w * roomW,
+          dest.h * roomH
+        );
+        ctx.globalAlpha = 1;
+      }
+      return;
+    }
+
+    // Not cached (or a different plan): decode once, then trigger a full
+    // repaint so grid/furniture end up on top of the image instead of the
+    // async onload painting over them.
+    if (floorPlanImageCache?.url !== url) {
+      const img = new Image();
+      floorPlanImageCache = { url, image: img };
+      img.onload = () => {
+        // Ignore stale loads if the plan changed again before this resolved.
+        if (floorPlanImageCache?.image === img) requestRepaint?.();
+      };
+      img.src = url;
+    }
+  } else {
+    ctx.fillStyle = floor.floorColor;
+    ctx.fillRect(offsetX, offsetY, layout.width * scale, layout.height * scale);
+  }
+}
+
+/** How strongly the storey below shows through (#624): a guide, not part of this floor. */
+const FLOOR_BELOW_ALPHA = 0.15;
+
+/** The floor below's interior walls and stairs, to line up on. Nothing on the ground floor. */
+function drawFloorBelow(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floorIndex: number,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  const { walls, stairs } = floorBelowUnderlay(layout, floorIndex);
+  if (walls.length === 0 && stairs.length === 0) return;
+  const stroke = (segments: readonly PlanSegment[]): void => {
+    ctx.beginPath();
+    for (const { from, to } of segments) {
+      ctx.moveTo(offsetX + (from.x + layout.width / 2) * scale, offsetY + (from.z + layout.height / 2) * scale);
+      ctx.lineTo(offsetX + (to.x + layout.width / 2) * scale, offsetY + (to.z + layout.height / 2) * scale);
+    }
+    ctx.stroke();
+  };
+  ctx.save();
+  ctx.globalAlpha = FLOOR_BELOW_ALPHA;
+  ctx.strokeStyle = '#000';
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = Math.max(2, INTERIOR_WALL_THICKNESS * scale);
+  stroke(walls);
+  ctx.lineWidth = 1;
+  stroke(stairs);
+  ctx.restore();
+}
+
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 1;
+  // Anchor the grid to the world centre (0,0) so the drawn cells line up with
+  // `snapToGrid`, which rounds world coordinates to multiples of
+  // GRID_SIZE_METERS about the origin. Corner-anchoring (0, 0.5, 1.0 …) drifts
+  // by `(width/2 mod GRID_SIZE_METERS)` and makes items look off-grid.
+  const halfW = layout.width / 2;
+  const halfD = layout.height / 2;
+  for (let wx = Math.ceil(-halfW / GRID_SIZE_METERS) * GRID_SIZE_METERS; wx <= halfW; wx += GRID_SIZE_METERS) {
+    const sx = offsetX + (wx + halfW) * scale;
+    ctx.beginPath();
+    ctx.moveTo(sx, offsetY);
+    ctx.lineTo(sx, offsetY + layout.height * scale);
+    ctx.stroke();
+  }
+  for (let wz = Math.ceil(-halfD / GRID_SIZE_METERS) * GRID_SIZE_METERS; wz <= halfD; wz += GRID_SIZE_METERS) {
+    const sy = offsetY + (wz + halfD) * scale;
+    ctx.beginPath();
+    ctx.moveTo(offsetX, sy);
+    ctx.lineTo(offsetX + layout.width * scale, sy);
+    ctx.stroke();
+  }
+}
+
+function drawRoomOutline(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floor: FloorLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  // Per-edge, not strokeRect: a wall hidden via Wall Visibility (or Delete)
+  // reads as a light dashed boundary instead of a solid wall (#118).
+  const hidden = new Set(floor.hiddenWalls ?? []);
+  const x0 = offsetX;
+  const y0 = offsetY;
+  const x1 = offsetX + layout.width * scale;
+  const canvasX = (x: number) => offsetX + (x + layout.width / 2) * scale;
+  const canvasY = (z: number) => offsetY + (z + layout.height / 2) * scale;
+  // The corner cut out of the building (#727) is outside too, and the six
+  // walls of the L run round it.
+  clearCutout(ctx, layout, offsetX, offsetY, scale);
+  const [northWall, ...otherWalls] = shellWalls(layout);
+  const northX0 = canvasX(northWall!.x1);
+  const northX1 = canvasX(northWall!.x2);
+  // The recessed entrance (#285): the north edge breaks across the opening
+  // and the recess's two cheeks run back to its rear wall (an ordinary
+  // interior wall carrying the porch door, drawn with the others). The
+  // recess itself is cleared to the canvas background — the outside — over
+  // the floor, grid, tracing image and zone tints painted before this.
+  const recess = entrancePlanOutline(layout, planFloorIndex(layout.floors, floor));
+  const rx0 = recess ? offsetX + (recess.x0 + layout.width / 2) * scale : x0;
+  const rx1 = recess ? offsetX + (recess.x1 + layout.width / 2) * scale : x1;
+  const ry1 = recess ? offsetY + (recess.backZ + layout.height / 2) * scale : y0;
+  if (recess) ctx.clearRect(rx0, y0, rx1 - rx0, ry1 - y0);
+  type Edge = { id: WallId; from: readonly [number, number]; to: readonly [number, number] };
+  const north: Edge[] = recess
+    ? [
+        { id: 'north', from: [northX0, y0], to: [rx0, y0] },
+        { id: 'north', from: [rx0, y0], to: [rx0, ry1] },
+        { id: 'north', from: [rx1, y0], to: [rx1, ry1] },
+        { id: 'north', from: [rx1, y0], to: [northX1, y0] },
+      ]
+    : [{ id: 'north', from: [northX0, y0], to: [northX1, y0] }];
+  const edges: Edge[] = [
+    ...north,
+    ...otherWalls.map((wall): Edge => ({
+      id: wall.side,
+      from: [canvasX(wall.x1), canvasY(wall.z1)],
+      to: [canvasX(wall.x2), canvasY(wall.z2)],
+    })),
+  ];
+  for (const edge of edges) {
+    const isHidden = hidden.has(edge.id);
+    ctx.save();
+    ctx.strokeStyle = isHidden ? '#bbb' : '#666';
+    ctx.lineWidth = isHidden ? 1.5 : 3;
+    if (isHidden) ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(edge.from[0], edge.from[1]);
+    ctx.lineTo(edge.to[0], edge.to[1]);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+const CUTOUT_CLEAR_MARGIN_PX = 3;
+
+/** Wipe the cut corner back to the canvas, over the floor, grid, tracing image and zone tints. */
+function clearCutout(ctx: CanvasRenderingContext2D, layout: RoomLayout, offsetX: number, offsetY: number, scale: number): void {
+  const notch = cutoutRect(layout);
+  if (!notch) return;
+  const x0 = offsetX + (notch.x0 + layout.width / 2) * scale;
+  const x1 = offsetX + (notch.x1 + layout.width / 2) * scale;
+  const y0 = offsetY + (notch.z0 + layout.height / 2) * scale;
+  const y1 = offsetY + (notch.z1 + layout.height / 2) * scale;
+  // A few pixels past the old outline: the grid's edge lines stand astride it.
+  const east = notch.x1 >= layout.width / 2;
+  const north = notch.z0 <= -layout.height / 2;
+  const left = east ? x0 : x0 - CUTOUT_CLEAR_MARGIN_PX;
+  const top = north ? y0 - CUTOUT_CLEAR_MARGIN_PX : y0;
+  ctx.clearRect(left, top, x1 - left + (east ? CUTOUT_CLEAR_MARGIN_PX : 0), y1 - top + (north ? 0 : CUTOUT_CLEAR_MARGIN_PX));
+}
+
+function drawInteriorWalls(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floor: FloorLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  const walls = floor.interiorWalls ?? [];
+  if (walls.length === 0) return;
+  const halfW = layout.width / 2;
+  const halfD = layout.height / 2;
+  ctx.save();
+  ctx.strokeStyle = '#555';
+  ctx.lineCap = 'butt';
+  ctx.lineWidth = Math.max(2, INTERIOR_WALL_THICKNESS * scale);
+  for (const wall of walls) {
+    ctx.beginPath();
+    ctx.moveTo(offsetX + (wall.x1 + halfW) * scale, offsetY + (wall.z1 + halfD) * scale);
+    ctx.lineTo(offsetX + (wall.x2 + halfW) * scale, offsetY + (wall.z2 + halfD) * scale);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/**
+ * Cut the doors and windows out of the walls (#576): inside each opening's
+ * strip, wipe the wall and put back what lies under it, the floor, grid,
+ * stairwell and zone tints inside the walls and the bare canvas outside.
+ * Under the furniture, so what stands against a wall stays whole.
+ */
+function drawOpeningGaps(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  floor: FloorLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number,
+  viewWidth: number,
+  viewHeight: number
+): void {
+  const openings = floor.items.filter((item) => item.position && isOpening(item.type));
+  if (openings.length === 0) return;
+  const floorIndex = planFloorIndex(layout.floors, floor);
+  ctx.save();
+  ctx.beginPath();
+  traceOpeningGaps(ctx, openings, layout, { scale, offsetX, offsetY });
+  ctx.clip();
+  ctx.clearRect(0, 0, viewWidth, viewHeight);
+  drawFloor(ctx, layout, floor, offsetX, offsetY, scale);
+  drawGrid(ctx, layout, offsetX, offsetY, scale);
+  drawStairwellHoles(ctx, layout, floorIndex, { scale, offsetX, offsetY });
+  drawZoneFills(ctx, layout, floor, offsetX, offsetY, scale);
+  // The recessed entrance is outside, as drawRoomOutline leaves it.
+  const recess = entrancePlanOutline(layout, floorIndex);
+  if (recess) {
+    const x0 = offsetX + (recess.x0 + layout.width / 2) * scale;
+    const x1 = offsetX + (recess.x1 + layout.width / 2) * scale;
+    ctx.clearRect(x0, offsetY, x1 - x0, (recess.backZ + layout.height / 2) * scale);
+  }
+  clearCutout(ctx, layout, offsetX, offsetY, scale);
+  ctx.restore();
+}
+
+function drawSignalRings(
+  ctx: CanvasRenderingContext2D,
+  items: readonly FurnitureItem[],
+  offsetX: number,
+  offsetY: number,
+  scale: number,
+  layout: RoomLayout,
+  kind: 'wifi' | 'cctv'
+): void {
+  const fills = kind === 'wifi' ? WIFI_RING_FILLS : CCTV_RING_FILLS;
+  const strokes = kind === 'wifi' ? WIFI_RING_STROKES : CCTV_RING_STROKES;
+  const predicate = (item: FurnitureItem) =>
+    Boolean(item.position && item.signalRange && (kind === 'wifi' ? item.isWiFiAccessPoint : item.isCCTV));
+
+  for (const item of items.filter(predicate)) {
+    if (!item.position || !item.signalRange) continue;
+    const cx = offsetX + (item.position.x + layout.width / 2) * scale;
+    const cy = offsetY + (item.position.z + layout.height / 2) * scale;
+
+    for (let ring = 3; ring >= 1; ring--) {
+      const radius = (item.signalRange * ring * scale) / 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = fills[ring - 1] ?? 'transparent';
+      ctx.fill();
+      ctx.strokeStyle = strokes[ring - 1] ?? 'transparent';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }
+}
+
+/**
+ * Security-camera FOV wedges — the flagship coverage feature was invisible in
+ * exactly the artifacts you'd plan coverage with: the 2D plan and the printed
+ * blueprint (#134). Drawn under the furniture layer like the signal rings.
+ */
+function drawVisionCones(
+  ctx: CanvasRenderingContext2D,
+  items: readonly FurnitureItem[],
+  offsetX: number,
+  offsetY: number,
+  scale: number,
+  layout: RoomLayout
+): void {
+  for (const item of items) {
+    // Range and FOV fall back to the 3D cone's defaults, as the SVG and DXF do (#401).
+    if (!item.position || !item.hasVisionCone) continue;
+    const range = item.visionRange ?? DEFAULT_VISION_RANGE_M;
+    const fov = item.visionFov ?? DEFAULT_VISION_FOV_DEG;
+    const cx = offsetX + (item.position.x + layout.width / 2) * scale;
+    const cy = offsetY + (item.position.z + layout.height / 2) * scale;
+    // The camera faces its local +Z: world direction (sin r, cos r), which
+    // maps straight onto canvas axes (x right, z down) — no negation, unlike
+    // the footprint rotation, which goes through ctx.rotate().
+    const rotation = item.rotation ?? 0;
+    const centerAngle = Math.atan2(Math.cos(rotation), Math.sin(rotation));
+    const halfAngle = (fov * Math.PI) / 360;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, range * scale, centerAngle - halfAngle, centerAngle + halfAngle);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(127, 243, 255, 0.14)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(127, 243, 255, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawFurniture(
+  ctx: CanvasRenderingContext2D,
+  options: Render2DOptions,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  // Layer order (#286): rugs first, then floor furniture, tabletop items,
+  // wall-mounted — so a rug listed after its sofa still paints beneath it.
+  for (const item of planDrawOrder(options.floor.items)) {
+    if (!item.position) continue;
+    const collision = options.hasCollision(item);
+    const cx = offsetX + (item.position.x + options.layout.width / 2) * scale;
+    const cy = offsetY + (item.position.z + options.layout.height / 2) * scale;
+    const w = item.width * scale;
+    const d = item.depth * scale;
+    // Doors and windows are symbols in the wall (#576); their footprint is
+    // painted only to mark a state, and stays the hit target either way.
+    const opening = isOpening(item.type);
+    if (opening) drawOpeningSymbol(ctx, item, options.floor.floorColor, options.layout, { scale, offsetX, offsetY });
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    // Canvas rotate() is clockwise while Three's rotateY is CCW; negate so the
+    // 2D footprint matches the 3D scene's orientation.
+    ctx.rotate(-(item.rotation ?? 0));
+
+    if (!opening || collision) {
+      ctx.fillStyle = collision ? 'rgba(255, 0, 0, 0.7)' : item.color;
+      ctx.fillRect(-w / 2, -d / 2, w, d);
+    }
+
+    if (options.selectedItemId === item.id) {
+      ctx.strokeStyle = collision ? '#ff6666' : '#00ff00';
+      ctx.lineWidth = 3;
+    } else if (options.extraSelectedIds?.has(item.id)) {
+      // Multi-select extras share the primary's green, slightly thinner.
+      ctx.strokeStyle = collision ? '#ff6666' : '#00cc00';
+      ctx.lineWidth = 2;
+    } else if (collision) {
+      ctx.strokeStyle = '#ff0000';
+      ctx.lineWidth = 2;
+    } else {
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1;
+    }
+    const marked = collision || options.selectedItemId === item.id || options.extraSelectedIds?.has(item.id) === true;
+    if (!opening || marked) ctx.strokeRect(-w / 2, -d / 2, w, d);
+
+    ctx.font = `${Math.min(w, d) * 0.6}px Arial`;
+    ctx.fillStyle = '#fff';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // Stairs draw their treads and climb arrow in place of the icon (#290),
+    // in world space once the item's rotated frame is restored.
+    if (item.type !== 'stairs' && !opening) ctx.fillText(item.icon, 0, 0);
+    ctx.restore();
+    if (item.type === 'stairs') drawStairsSymbol(ctx, item, options.layout, { scale, offsetX, offsetY });
+
+    if (options.showMeasurements) {
+      // The label is drawn in screen space (outside the rotated transform), so
+      // offset it by the rotation-aware AABB half-depth to clear the footprint.
+      const { halfD } = rotatedHalfExtents(item);
+      ctx.save();
+      ctx.fillStyle = '#333';
+      ctx.font = '10px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(formatSize(item.width, item.depth), cx, cy + halfD * scale + 15);
+      ctx.restore();
+    }
+  }
+  drawStairCutHatch(ctx, options.layout, options.floor, { scale, offsetX, offsetY });
+  drawSelectionOutlines(ctx, options, offsetX, offsetY, scale);
+}
+
+/**
+ * Re-strokes the selection outlines after every item is painted (#286): the
+ * layer order can put a selected item (a rug) beneath later-drawn furniture,
+ * and its in-loop outline would then be partly hidden. Same colours as the
+ * in-loop stroke, so an unobstructed item looks unchanged.
+ */
+function drawSelectionOutlines(
+  ctx: CanvasRenderingContext2D,
+  options: Render2DOptions,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  for (const item of options.floor.items) {
+    if (!item.position) continue;
+    const primary = options.selectedItemId === item.id;
+    if (!primary && !options.extraSelectedIds?.has(item.id)) continue;
+    const collision = options.hasCollision(item);
+    const w = item.width * scale;
+    const d = item.depth * scale;
+    ctx.save();
+    ctx.translate(
+      offsetX + (item.position.x + options.layout.width / 2) * scale,
+      offsetY + (item.position.z + options.layout.height / 2) * scale
+    );
+    ctx.rotate(-(item.rotation ?? 0));
+    ctx.strokeStyle = collision ? '#ff6666' : primary ? '#00ff00' : '#00cc00';
+    ctx.lineWidth = primary ? 3 : 2;
+    ctx.strokeRect(-w / 2, -d / 2, w, d);
+    ctx.restore();
+  }
+}
+
+function drawRoomDimensions(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): void {
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 12px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(formatMetres(layout.width), offsetX + (layout.width * scale) / 2, offsetY - 10);
+  ctx.save();
+  ctx.translate(offsetX - 10, offsetY + (layout.height * scale) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(formatMetres(layout.height), 0, 0);
+  ctx.restore();
+}
+
+/** Grid resolution of the price heatmap (cells per axis). */
+export const HEATMAP_COLS = 20;
+export const HEATMAP_ROWS = 20;
+
+/**
+ * Pure heatmap accumulation: bucket the floor into a COLS×ROWS grid and
+ * attribute each priced item's value to the cells its rotation-aware AABB
+ * overlaps, weighted by the actual intersection area — a cell only grazed by
+ * an item's corner receives the matching fraction of its price, not the full
+ * per-cell amount (#150). Returns the row-major grid of price (§) per cell.
+ */
+export function computeHeatmapCells(
+  items: readonly FurnitureItem[],
+  roomWidth: number,
+  roomDepth: number,
+  cols: number = HEATMAP_COLS,
+  rows: number = HEATMAP_ROWS
+): number[] {
+  const grid: number[] = new Array(cols * rows).fill(0);
+  const cellWidth = roomWidth / cols;
+  const cellDepth = roomDepth / rows;
+  if (cellWidth <= 0 || cellDepth <= 0) return grid;
+
+  for (const item of items) {
+    if (!item.position || (item.price ?? 0) <= 0) continue;
+    const itemArea = item.width * item.depth;
+    if (itemArea <= 0) continue;
+    const pricePerArea = (item.price ?? 0) / itemArea;
+
+    // Use the rotation-aware AABB so a rotated item shades the cells its
+    // oriented footprint actually covers.
+    const { halfW, halfD } = rotatedHalfExtents(item);
+    const minX = item.position.x - halfW + roomWidth / 2;
+    const maxX = item.position.x + halfW + roomWidth / 2;
+    const minZ = item.position.z - halfD + roomDepth / 2;
+    const maxZ = item.position.z + halfD + roomDepth / 2;
+
+    const col0 = Math.max(0, Math.floor(minX / cellWidth));
+    const col1 = Math.min(cols - 1, Math.floor(maxX / cellWidth));
+    const row0 = Math.max(0, Math.floor(minZ / cellDepth));
+    const row1 = Math.min(rows - 1, Math.floor(maxZ / cellDepth));
+
+    for (let row = row0; row <= row1; row++) {
+      const cellTop = row * cellDepth;
+      const overlapZ = Math.min(maxZ, cellTop + cellDepth) - Math.max(minZ, cellTop);
+      if (overlapZ <= 0) continue;
+      for (let col = col0; col <= col1; col++) {
+        const cellLeft = col * cellWidth;
+        const overlapX = Math.min(maxX, cellLeft + cellWidth) - Math.max(minX, cellLeft);
+        if (overlapX <= 0) continue;
+        const idx = row * cols + col;
+        grid[idx] = (grid[idx] ?? 0) + pricePerArea * overlapX * overlapZ;
+      }
+    }
+  }
+
+  return grid;
+}
+
+/**
+ * Paint a price-per-area heatmap onto the 2D canvas. The floor is bucketed
+ * into a 20×20 grid; each cell aggregates the price of any item whose
+ * footprint overlaps the cell (weighted by intersection area), then
+ * colour-maps the density. Returns the densest cell's value per square
+ * metre, for the legend (0 when nothing is priced).
+ */
+function drawHeatmap(
+  ctx: CanvasRenderingContext2D,
+  layout: RoomLayout,
+  items: readonly FurnitureItem[],
+  offsetX: number,
+  offsetY: number,
+  scale: number
+): number {
+  const COLS = HEATMAP_COLS;
+  const ROWS = HEATMAP_ROWS;
+  const cellWidth = layout.width / COLS;
+  const cellDepth = layout.height / ROWS;
+  const cellArea = cellWidth * cellDepth;
+  if (cellArea <= 0) return 0;
+
+  const grid = computeHeatmapCells(items, layout.width, layout.height, COLS, ROWS);
+
+  const max = Math.max(...grid);
+  if (max <= 0) return 0;
+
+  // Cells.
+  ctx.save();
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const value = grid[row * COLS + col] ?? 0;
+      if (value <= 0) continue;
+      const ratio = value / max;
+      ctx.fillStyle = heatColor(ratio);
+      ctx.fillRect(
+        offsetX + col * cellWidth * scale,
+        offsetY + row * cellDepth * scale,
+        cellWidth * scale + 1,
+        cellDepth * scale + 1
+      );
+    }
+  }
+  ctx.restore();
+
+  return max / cellArea;
+}
+
+const HEATMAP_LEGEND_BAR = { width: 140, height: 12 };
+/** The legend's box: the bar, with its caption above and scale below. */
+const HEATMAP_LEGEND_SIZE = { width: HEATMAP_LEGEND_BAR.width + 16, height: HEATMAP_LEGEND_BAR.height + 36 };
+
+/** The legend's box at `spot` (logical CSS px, `planLegendSpot`), over the plan and its furniture. */
+function drawHeatmapLegend(
+  ctx: CanvasRenderingContext2D,
+  maxPricePerSqM: number,
+  spot: { x: number; y: number }
+): void {
+  const { width: barWidth, height: barHeight } = HEATMAP_LEGEND_BAR;
+  const x = spot.x + 8;
+  const y = spot.y + 14;
+
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 1;
+  ctx.fillRect(spot.x, spot.y, HEATMAP_LEGEND_SIZE.width, HEATMAP_LEGEND_SIZE.height);
+  ctx.strokeRect(spot.x, spot.y, HEATMAP_LEGEND_SIZE.width, HEATMAP_LEGEND_SIZE.height);
+
+  // Gradient bar.
+  const gradient = ctx.createLinearGradient(x, 0, x + barWidth, 0);
+  gradient.addColorStop(0, 'rgba(0, 200, 0, 0.9)');
+  gradient.addColorStop(0.5, 'rgba(255, 200, 0, 0.9)');
+  gradient.addColorStop(1, 'rgba(255, 0, 0, 0.9)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, barWidth, barHeight);
+  ctx.strokeStyle = '#666';
+  ctx.strokeRect(x, y, barWidth, barHeight);
+
+  ctx.fillStyle = '#333';
+  ctx.font = '10px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${CURRENCY_SYMBOL}/m² density`, x, y - 4);
+  ctx.fillText('0', x, y + barHeight + 12);
+  ctx.textAlign = 'right';
+  ctx.fillText(
+    `${CURRENCY_SYMBOL}${Math.round(maxPricePerSqM).toLocaleString()}`,
+    x + barWidth,
+    y + barHeight + 12
+  );
+  ctx.restore();
+}
+
+function heatColor(ratio: number): string {
+  const t = Math.max(0, Math.min(1, ratio));
+  // Green (low) → yellow (mid) → red (high), with constant alpha.
+  if (t < 0.5) {
+    const k = t / 0.5;
+    const r = Math.round(k * 255);
+    return `rgba(${r}, 200, 0, 0.35)`;
+  }
+  const k = (t - 0.5) / 0.5;
+  const g = Math.round((1 - k) * 200);
+  return `rgba(255, ${g}, 0, 0.45)`;
+}
+
+/**
+ * Resolve once the floor-plan image for `url` is in the decoded-image cache
+ * above, so a synchronous `render2DTopDown` that follows paints it. The
+ * cache is warmed lazily by the first render and repainted via
+ * `addFloorPlanRepaintHandler` — a one-shot consumer with nothing to repaint
+ * (the blueprint printout) captured only the floor colour when nothing had
+ * rendered the plan yet, e.g. in 3D view with the minimap off (#288). Never
+ * rejects: a broken image resolves too, and the render's naturalWidth guard
+ * then skips it exactly as it does for a live repaint.
+ */
+export function ensureFloorPlanImageDecoded(url: string): Promise<void> {
+  let entry = floorPlanImageCache;
+  if (entry?.url !== url) {
+    const img = new Image();
+    entry = { url, image: img };
+    floorPlanImageCache = entry;
+    img.onload = () => {
+      // Same stale-load guard as drawFloor: the plan may change mid-decode.
+      if (floorPlanImageCache?.image === img) requestRepaint();
+    };
+    img.src = url;
+  }
+  const { image } = entry;
+  if (image.complete) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = (): void => resolve();
+    image.addEventListener('load', done, { once: true });
+    image.addEventListener('error', done, { once: true });
+  });
+}
+
+// ---- Blueprint / print (plan sprint X3) -------------------------------------
+
+/**
+ * The blueprint's transform (#377): fit and centre `bounds` — the plan
+ * content, outdoor items included — on the canvas instead of the room.
+ * Returned in the same shape as `get2DViewTransform` (offsets are the
+ * room's top-left corner), so every draw helper and `canvasToWorld` work
+ * unchanged. Bounds no bigger than the room give exactly the room fit.
+ */
+export function get2DBoundsTransform(
+  canvasWidth: number,
+  canvasHeight: number,
+  layout: Pick<RoomLayout, 'width' | 'height'>,
+  bounds: PlanBounds,
+  padding: number = PADDING
+): View2DTransform {
+  // One fit, one inverse: the same maths as the on-screen plan (#381).
+  return get2DViewTransform(canvasWidth, canvasHeight, layout, padding, undefined, bounds);
+}

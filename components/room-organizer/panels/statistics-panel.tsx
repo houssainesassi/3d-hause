@@ -1,0 +1,217 @@
+'use client';
+
+import { useMemo } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useRoomEditor } from '../contexts';
+import { useActiveFloorIndex, useLayout } from '../hooks/use-layout-store';
+import { budgetSpent, furnitureSpend } from '../lib/budget';
+import { CATEGORIES, CURRENCY_SYMBOL, DEFAULT_BUDGET } from '../lib/constants';
+import { buildingArea } from '../lib/footprint';
+import { footprintArea, itemCountByCategory } from '../lib/geometry';
+import { floorRooms, hasTooManyWalls, MAX_ROOM_WALLS } from '../lib/room-detect';
+import { ENTRANCE_DOOR_ID, ENTRANCE_WALL_ID, entrancePlanOutline } from '../lib/street';
+import { zoneContains, zoneStats } from '../lib/zones';
+
+export function StatisticsPanel(): JSX.Element {
+  // `layout` from the store selector; `collidingIds` stays on the context.
+  const layout = useLayout();
+  const { collidingIds } = useRoomEditor();
+  const budget = DEFAULT_BUDGET;
+  // Collisions are checked on the active floor only; everything else here
+  // covers the whole house, and the labels say which is which (#438).
+  const collisionsOnActiveFloor = collidingIds.size;
+  const activeFloorIndex = useActiveFloorIndex();
+  const activeFloorName = layout.floors[activeFloorIndex]?.name ?? 'this floor';
+
+  // The porch door is structure, not furniture (#382).
+  const allItems = useMemo(
+    () => layout.floors.flatMap((floor) => floor.items).filter((item) => item.id !== ENTRANCE_DOOR_ID),
+    [layout.floors]
+  );
+
+  // What the header and the library cards show: under the hard budget it
+  // includes the write-off of what was sold back (#463e).
+  const cost = budgetSpent(layout);
+  // Per floor: a lamp upstairs doesn't stand on the desk below it (#462).
+  const footprint = useMemo(
+    () => layout.floors.reduce((sum, floor) => sum + footprintArea(floor.items), 0),
+    [layout.floors]
+  );
+  const roomArea = buildingArea(layout);
+  const totalArea = roomArea * layout.floors.length;
+  const density = totalArea > 0 ? Math.min(100, (footprint / totalArea) * 100) : 0;
+  const counts = useMemo(() => itemCountByCategory(allItems), [allItems]);
+  const budgetUsedRatio = budget > 0 ? Math.min(1, cost / budget) : 0;
+  const overBudget = cost > budget;
+  // Per-room cost / count / area from the zones drawn on each floor (#155);
+  // the floor name only disambiguates once there is more than one floor.
+  const zoneRows = useMemo(
+    () =>
+      layout.floors.flatMap((floor, index) =>
+        (floor.zones ?? []).map((zone) => ({
+          key: `${floor.id}:${zone.id}`,
+          label: layout.floors.length > 1 ? `${zone.name} · ${floor.name}` : zone.name,
+          color: zone.color,
+          ...zoneStats(zone, floor.items, entrancePlanOutline(layout, index)),
+        }))
+      ),
+    [layout]
+  );
+  // The rooms the walls close on each floor (#719), named after the zone
+  // over them. A floor with no partitions is one room, which says nothing.
+  const roomRows = useMemo(
+    () =>
+      layout.floors.flatMap((floor, index) => {
+        if (!floor.interiorWalls?.some((wall) => wall.id !== ENTRANCE_WALL_ID)) return [];
+        return floorRooms(layout, index).map((room, roomIndex) => {
+          const name = floor.zones?.find((zone) => zoneContains(zone, room.anchor.x, room.anchor.z))?.name ?? `Room ${roomIndex + 1}`;
+          return {
+            key: `${floor.id}:${roomIndex}`,
+            label: layout.floors.length > 1 ? `${name} · ${floor.name}` : name,
+            area: room.area,
+          };
+        });
+      }),
+    [layout]
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">📊 Statistics</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3 text-xs">
+        <p className="text-muted-foreground">Whole house</p>
+        <StatRow label="Items">{allItems.length}</StatRow>
+        <StatRow label="Floors">{layout.floors.length}</StatRow>
+        <StatRow label="Area per floor">{roomArea.toFixed(1)} m²</StatRow>
+        <StatRow label="Total floor area">{totalArea.toFixed(1)} m²</StatRow>
+        <StatRow label="Furniture footprint">
+          {footprint.toFixed(1)} m² ({density.toFixed(0)}%)
+        </StatRow>
+        <ProgressBar value={density / 100} label="Coverage" intent={density > 70 ? 'warning' : 'normal'} />
+
+        {collisionsOnActiveFloor > 0 && (
+          <StatRow label={`Collisions on ${activeFloorName}`} highlight>
+            ⚠️ {collisionsOnActiveFloor}
+          </StatRow>
+        )}
+
+        <div className="pt-2 border-t space-y-1">
+          <StatRow label="Cost" highlight={overBudget}>
+            {CURRENCY_SYMBOL}
+            {cost.toLocaleString()}
+          </StatRow>
+          <StatRow label="Budget">
+            {CURRENCY_SYMBOL}
+            {budget.toLocaleString()}
+          </StatRow>
+          <ProgressBar value={budgetUsedRatio} label="Budget" intent={overBudget ? 'danger' : 'normal'} />
+        </div>
+
+        {counts.size > 0 && (
+          <div className="pt-2 border-t space-y-1">
+            <p className="text-muted-foreground">By category</p>
+            {CATEGORIES.filter((category) => counts.has(category.key)).map((category) => (
+              <StatRow key={category.key} label={`${category.icon} ${category.label}`}>
+                {counts.get(category.key) ?? 0}
+              </StatRow>
+            ))}
+          </div>
+        )}
+
+        {layout.floors.some(hasTooManyWalls) && (
+          <p className="pt-2 border-t text-muted-foreground">Rooms aren’t listed on a floor with over {MAX_ROOM_WALLS} walls.</p>
+        )}
+
+        {roomRows.length > 0 && (
+          <div className="pt-2 border-t space-y-1" aria-label="Rooms">
+            <p className="text-muted-foreground">Rooms</p>
+            {roomRows.map((row) => (
+              <StatRow key={row.key} label={row.label}>
+                {row.area.toFixed(1)} m²
+              </StatRow>
+            ))}
+          </div>
+        )}
+
+        {zoneRows.length > 0 && (
+          <div className="pt-2 border-t space-y-1" aria-label="By zone">
+            <p className="text-muted-foreground">By zone</p>
+            {zoneRows.map((row) => (
+              <div key={row.key} className="flex justify-between items-baseline gap-2">
+                <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: row.color }}
+                  />
+                  <span className="truncate">{row.label}</span>
+                </span>
+                <span className="shrink-0 font-medium">
+                  {row.itemCount} · {CURRENCY_SYMBOL}
+                  {row.cost.toLocaleString()} · {row.area.toFixed(1)} m²
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {layout.floors.length > 1 && (
+          <div className="pt-2 border-t space-y-1">
+            <p className="text-muted-foreground">By floor</p>
+            {layout.floors.map((floor) => {
+              // The porch door is free here too, so the floors add up (#693).
+              const floorCost = furnitureSpend({ floors: [floor] });
+              return (
+                <StatRow key={floor.id} label={floor.name}>
+                  {floor.items.length} · {CURRENCY_SYMBOL}
+                  {floorCost.toLocaleString()}
+                </StatRow>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface StatRowProps {
+  label: string;
+  highlight?: boolean;
+  children: React.ReactNode;
+}
+
+function StatRow({ label, highlight = false, children }: StatRowProps): JSX.Element {
+  return (
+    <div className="flex justify-between items-baseline">
+      <span className="text-muted-foreground">{label}</span>
+      <span className={highlight ? 'font-semibold text-red-600' : 'font-medium'}>{children}</span>
+    </div>
+  );
+}
+
+interface ProgressBarProps {
+  value: number;
+  label: string;
+  intent: 'normal' | 'warning' | 'danger';
+}
+
+function ProgressBar({ value, label, intent }: ProgressBarProps): JSX.Element {
+  const pct = Math.max(0, Math.min(1, value)) * 100;
+  const tone =
+    intent === 'danger' ? 'bg-red-500' : intent === 'warning' ? 'bg-amber-500' : 'bg-emerald-500';
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(pct)}
+      className="h-1.5 w-full bg-muted rounded-full overflow-hidden"
+    >
+      <div className={`h-full ${tone} transition-all`} style={{ width: `${pct}%` }} />
+    </div>
+  );
+}

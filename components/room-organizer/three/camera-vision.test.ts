@@ -1,0 +1,162 @@
+import * as THREE from 'three';
+import { describe, expect, it } from 'vitest';
+import { buildSightWalls } from '../lib/walk-collision';
+import { addVisionCones, stepVisionCones, visionConesOccludable } from './camera-vision';
+import { ROOM_OBJECT_TAGS } from './room-builder';
+import type { FurnitureItem, InteriorWall } from '../lib/types';
+
+type ThreeModule = typeof import('./three-runtime');
+const T = THREE as unknown as ThreeModule;
+
+function item(overrides: Partial<FurnitureItem> & { type: string; position: { x: number; z: number } }): FurnitureItem {
+  return { id: overrides.type, name: overrides.type, width: 0.5, depth: 0.5, height: 1, color: '#000', icon: '', rotation: 0, ...overrides };
+}
+
+// A camera in the middle of a 10 × 10 m storey, looking along +z with a 5 m reach.
+const CAMERA = item({ id: 'cam', type: 'security-camera', height: 2.4, position: { x: 0, z: -2 }, hasVisionCone: true, visionRange: 5, visionFov: 90 });
+const CHAIR = item({ id: 'chair', type: 'chair', position: { x: 0, z: 1.5 } });
+const PARTITION: InteriorWall = { id: 'p', x1: -5, z1: 0, x2: 5, z2: 0 };
+
+function cone(scene: THREE.Scene): THREE.Object3D {
+  return scene.children.find((child) => child.userData.type === ROOM_OBJECT_TAGS.CameraVision)!;
+}
+
+/** A scene with the cone and a furniture group for the chair, as the effects build them. */
+function sceneWith(items: FurnitureItem[], options?: Parameters<typeof addVisionCones>[6]): THREE.Scene {
+  const scene = new THREE.Scene();
+  addVisionCones(T, scene, items, 0, 0, 3, options);
+  for (const target of items) {
+    if (target.hasVisionCone || !target.position) continue;
+    const group = new THREE.Group();
+    group.position.set(target.position.x, 0, target.position.z);
+    group.userData = { type: 'furniture', id: target.id, floorIndex: 0 };
+    scene.add(group);
+  }
+  return scene;
+}
+
+/** Whether the cone is in its alert state after a step (the wedge's opacity at t = 0). */
+function alerted(scene: THREE.Scene, walls?: Parameters<typeof stepVisionCones>[2]): boolean {
+  stepVisionCones(scene, 0, walls);
+  const wedge = (cone(scene).userData.vision as { wedge: THREE.Mesh }).wedge;
+  return (wedge.material as THREE.MeshBasicMaterial).opacity > 0.2;
+}
+
+describe('camera vision cones and walls (#590)', () => {
+  const building = (interiorWalls: InteriorWall[], items: FurnitureItem[]) => ({
+    width: 10,
+    depth: 10,
+    floors: [{ items, interiorWalls }],
+  });
+
+  it('alerts on a chair in view', () => {
+    const items = [CAMERA, CHAIR];
+    expect(alerted(sceneWith(items))).toBe(true);
+    expect(alerted(sceneWith(items), buildSightWalls(building([], items)))).toBe(true);
+  });
+
+  it('does not alert on a chair behind a partition', () => {
+    const items = [CAMERA, CHAIR];
+    expect(alerted(sceneWith(items), buildSightWalls(building([PARTITION], items)))).toBe(false);
+  });
+
+  it('sees through a door in the partition', () => {
+    const door = item({ id: 'door', type: 'door', width: 0.9, depth: 0.1, height: 2.1, position: { x: 0, z: 0 } });
+    const items = [CAMERA, CHAIR, door];
+    expect(alerted(sceneWith(items), buildSightWalls(building([PARTITION], items)))).toBe(true);
+  });
+
+  it('does not alert on a walker behind a partition', () => {
+    const scene = sceneWith([CAMERA]);
+    const walker = new THREE.Group();
+    walker.userData.type = 'npc';
+    walker.position.set(0.5, 0, 1.5);
+    scene.add(walker);
+    expect(alerted(scene)).toBe(true);
+    expect(alerted(scene, buildSightWalls(building([PARTITION], [CAMERA])))).toBe(false);
+  });
+
+  it('a camera on a wall still sees the room it faces', () => {
+    // Hung on the partition itself, facing away from it.
+    const onWall = { ...CAMERA, position: { x: 0, z: 0.02 } };
+    const items = [onWall, CHAIR];
+    expect(alerted(sceneWith(items), buildSightWalls(building([PARTITION], items)))).toBe(true);
+  });
+});
+
+describe('camera vision cones on other storeys (#552)', () => {
+  const materials = (scene: THREE.Scene) =>
+    (cone(scene).userData.vision as { materials: THREE.Material[] }).materials;
+
+  const volumeMaterial = (scene: THREE.Scene) => ((cone(scene).userData.vision as { volume: THREE.Mesh }).volume.material as THREE.Material);
+
+  it('draw over the world by default, as on the active storey', () => {
+    const scene = sceneWith([CAMERA]);
+    const volume = volumeMaterial(scene);
+    expect(materials(scene).filter((material) => material !== volume).every((material) => !material.depthTest)).toBe(true);
+    // The light volume alone is hidden by a wall in front of it (#652).
+    expect(volume.depthTest).toBe(true);
+  });
+
+  it('are occludable under a drawn storey and while walking, never on the active storey under ghosts', () => {
+    // One storey, or the top one: over the world.
+    expect(visionConesOccludable(0, 0, false, -1)).toBe(false);
+    expect(visionConesOccludable(1, 1, false, -1)).toBe(false);
+    // All floors, walls up: the storey below the top is under a solid plate.
+    expect(visionConesOccludable(0, 1, false, -1)).toBe(true);
+    // All floors with ghosts, ground floor active: its cones stay visible.
+    expect(visionConesOccludable(0, 1, false, 0)).toBe(false);
+    expect(visionConesOccludable(0, 2, false, 1)).toBe(true);
+    // Walking: always depth-tested.
+    expect(visionConesOccludable(1, 1, true, -1)).toBe(true);
+  });
+
+  it('are hidden behind floor plates and walls when occludable', () => {
+    expect(materials(sceneWith([CAMERA], { occludable: true })).every((material) => material.depthTest)).toBe(true);
+  });
+});
+
+// The hook asked for a frame after every step, so a house with one camera
+// rendered 60 times a second even with reduced motion and nothing in view;
+// the step now says whether anything moved (#556).
+describe('a still cone asks for no frame (#556)', () => {
+  it('settles with the clock stopped and reports no change after that', () => {
+    const scene = sceneWith([CAMERA]);
+    let steps = 0;
+    while (stepVisionCones(scene, 0) && steps < 100) steps += 1;
+    expect(steps).toBeGreaterThan(0);
+    expect(steps).toBeLessThan(100);
+    expect(stepVisionCones(scene, 0)).toBe(false);
+    expect(stepVisionCones(scene, 0)).toBe(false);
+  });
+
+  it('moves again when the clock runs or a target arrives', () => {
+    const scene = sceneWith([CAMERA]);
+    while (stepVisionCones(scene, 0));
+    expect(stepVisionCones(scene, 0.5)).toBe(true);
+    const chair = new THREE.Group();
+    chair.position.set(CHAIR.position!.x, 0, CHAIR.position!.z);
+    chair.userData = { type: 'furniture', id: CHAIR.id, floorIndex: 0 };
+    const withChair = sceneWith([CAMERA, CHAIR]);
+    while (stepVisionCones(withChair, 0));
+    expect(stepVisionCones(withChair, 0)).toBe(false);
+    // The chair leaves: the cone eases back to idle, then settles again.
+    withChair.remove(withChair.children.find((child) => child.userData.id === CHAIR.id)!);
+    expect(stepVisionCones(withChair, 0)).toBe(true);
+    while (stepVisionCones(withChair, 0));
+    expect(stepVisionCones(withChair, 0)).toBe(false);
+  });
+});
+
+// Additive layers over a pale wall or floor saturated it to white, so the
+// wall looked missing from the orbit view (#652).
+describe('cone layers never bleach what is behind them (#652)', () => {
+  it('blend normally, and the volume alone is always depth-tested', () => {
+    for (const options of [undefined, { occludable: true }]) {
+      const scene = sceneWith([CAMERA], options);
+      const data = cone(scene).userData.vision as { materials: THREE.Material[]; volume: THREE.Mesh };
+      for (const material of data.materials) expect(material.blending).toBe(THREE.NormalBlending);
+      expect((data.volume.material as THREE.Material).depthTest).toBe(true);
+    }
+  });
+});

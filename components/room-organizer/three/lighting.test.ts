@@ -1,0 +1,389 @@
+import * as THREE from 'three';
+import { describe, expect, it, vi } from 'vitest';
+import { LAMP_POOL_SIZE, planLampPool, type LampLight } from '../lib/night-lights';
+import {
+  addLights,
+  applyLampPool,
+  applyShadowQuality,
+  computeNightSky,
+  installEnvironment,
+  computeSkyProfile,
+  shadowNormalBias,
+  isLampPrewarmHour,
+  prewarmLampPool,
+} from './lighting';
+import { followCamera } from './sky';
+import type * as ThreeNS from 'three';
+
+function channels(hex: number): [number, number, number] {
+  return [(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff];
+}
+
+function brightness(hex: number): number {
+  const [r, g, b] = channels(hex);
+  return r + g + b;
+}
+
+describe('computeSkyProfile — night ramp (#145)', () => {
+  it('midnight is the darkest region of the night, not the brightest', () => {
+    const midnight = brightness(computeSkyProfile(0).background);
+    expect(midnight).toBeLessThan(brightness(computeSkyProfile(19).background));
+    expect(midnight).toBeLessThan(brightness(computeSkyProfile(5.5).background));
+  });
+
+  it('darkens monotonically after dusk (18 → 22)', () => {
+    let previous = Number.POSITIVE_INFINITY;
+    for (const hour of [18.25, 19, 20, 21, 22]) {
+      const value = brightness(computeSkyProfile(hour).background);
+      expect(value, `hour ${hour}`).toBeLessThanOrEqual(previous);
+      previous = value;
+    }
+  });
+
+  it('lifts toward dawn (2 → 6) symmetrically', () => {
+    let previous = 0;
+    for (const hour of [2, 3, 4, 5, 5.75]) {
+      const value = brightness(computeSkyProfile(hour).background);
+      expect(value, `hour ${hour}`).toBeGreaterThanOrEqual(previous);
+      previous = value;
+    }
+  });
+
+  it('meets the day branch continuously at the 06:00 and 18:00 boundaries', () => {
+    for (const [night, day] of [
+      [5.99, 6.01],
+      [17.99, 18.01],
+    ] as const) {
+      const a = channels(computeSkyProfile(night).background);
+      const b = channels(computeSkyProfile(day).background);
+      for (let i = 0; i < 3; i++) {
+        expect(Math.abs(a[i]! - b[i]!), `hours ${night}/${day} channel ${i}`).toBeLessThanOrEqual(4);
+      }
+    }
+  });
+});
+
+describe('computeNightSky (#182)', () => {
+  it('day: no stars, no moon', () => {
+    for (const hour of [6, 9, 12, 15, 18]) {
+      const sky = computeNightSky(hour);
+      expect(sky.starAlpha, `hour ${hour}`).toBe(0);
+      expect(sky.moonT, `hour ${hour}`).toBeNull();
+    }
+  });
+
+  it('midnight: full stars, moon at the top of its arc', () => {
+    const sky = computeNightSky(0);
+    expect(sky.starAlpha).toBe(1);
+    expect(sky.moonAlpha).toBe(1);
+    expect(sky.moonT).toBeCloseTo(0.5, 10);
+  });
+
+  it('stars fade in through dusk exactly as the twilight glow fades out', () => {
+    expect(computeNightSky(18.5).starAlpha).toBeCloseTo(0.125, 10);
+    expect(computeNightSky(20).starAlpha).toBeCloseTo(0.5, 10);
+    expect(computeNightSky(22).starAlpha).toBe(1);
+    // Symmetric on the dawn side.
+    expect(computeNightSky(4).starAlpha).toBeCloseTo(0.5, 10);
+  });
+
+  it('the moon rises after dusk and sets before dawn', () => {
+    expect(computeNightSky(18.5).moonT).toBeNull();
+    expect(computeNightSky(19.5).moonT).toBeGreaterThan(0);
+    expect(computeNightSky(4.5).moonT).toBeLessThan(1);
+    expect(computeNightSky(5.5).moonT).toBeNull();
+  });
+});
+
+describe('computeSkyProfile — weather overcast (#189)', () => {
+  const HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
+
+  it("'clear' is the default and returns the untouched profile", () => {
+    for (const hour of HOURS) {
+      expect(computeSkyProfile(hour, 'clear')).toEqual(computeSkyProfile(hour));
+    }
+  });
+
+  it('turns direct sun into fill by day, and only dims the night', () => {
+    for (const hour of HOURS) {
+      const clear = computeSkyProfile(hour);
+      const rain = computeSkyProfile(hour, 'rain');
+      const snow = computeSkyProfile(hour, 'snow');
+      expect(rain.sun.intensity, `rain sun ${hour}`).toBeCloseTo(clear.sun.intensity * 0.35, 10);
+      expect(snow.sun.intensity, `snow sun ${hour}`).toBeCloseTo(clear.sun.intensity * 0.45, 10);
+      const day = hour >= 6 && hour <= 18;
+      expect(rain.ambient.intensity, `rain ambient ${hour}`).toBeCloseTo(clear.ambient.intensity * (day ? 0.95 : 0.85), 10);
+      expect(snow.ambient.intensity, `snow ambient ${hour}`).toBeCloseTo(clear.ambient.intensity * 1, 10);
+      // Sun position and light colours ride along untouched: the arc is the same arc.
+      expect(rain.sun.position).toEqual(clear.sun.position);
+      expect(snow.sun.color).toBe(clear.sun.color);
+      expect(rain.ambient.color).toBe(clear.ambient.color);
+    }
+  });
+
+  it('flattens the sky toward grey: rain darker than clear, snow lighter', () => {
+    const saturation = (hex: number) => Math.max(...channels(hex)) - Math.min(...channels(hex));
+    for (const hour of [9, 12, 15]) {
+      const clear = computeSkyProfile(hour);
+      const rain = computeSkyProfile(hour, 'rain');
+      const snow = computeSkyProfile(hour, 'snow');
+      expect(saturation(rain.backgroundTop)).toBeLessThan(saturation(clear.backgroundTop));
+      expect(saturation(snow.backgroundTop)).toBeLessThan(saturation(clear.backgroundTop));
+      expect(brightness(rain.background)).toBeLessThan(brightness(clear.background));
+      expect(brightness(snow.background)).toBeGreaterThan(brightness(clear.background));
+    }
+  });
+
+  it('keeps the night ramp monotonic under weather (the overcast is hour-independent)', () => {
+    for (const weather of ['rain', 'snow'] as const) {
+      let previous = Number.POSITIVE_INFINITY;
+      for (const hour of [18.25, 19, 20, 21, 22]) {
+        const value = brightness(computeSkyProfile(hour, weather).background);
+        expect(value, `${weather} hour ${hour}`).toBeLessThanOrEqual(previous);
+        previous = value;
+      }
+    }
+  });
+});
+
+describe('computeSkyProfile — twilight (#215, #375)', () => {
+  const SAMPLES = Array.from({ length: 24 * 20 + 1 }, (_, i) => i / 20);
+
+  it('has no jump anywhere in the day: lights fade through twilight instead of snapping', () => {
+    for (let i = 1; i < SAMPLES.length; i++) {
+      const a = computeSkyProfile(SAMPLES[i - 1]!);
+      const b = computeSkyProfile(SAMPLES[i]!);
+      const at = `hour ${SAMPLES[i]}`;
+      expect(Math.abs(a.sun.intensity - b.sun.intensity), at).toBeLessThan(0.08);
+      expect(Math.abs(a.ambient.intensity - b.ambient.intensity), at).toBeLessThan(0.03);
+      expect(Math.abs(a.hemisphere.intensity - b.hemisphere.intensity), at).toBeLessThan(0.03);
+      expect(Math.abs(a.lamps - b.lamps), at).toBeLessThan(0.06);
+      for (const [x, y] of [
+        [a.ambient.color, b.ambient.color],
+        [a.hemisphere.sky, b.hemisphere.sky],
+        [a.hemisphere.ground, b.hemisphere.ground],
+      ] as const) {
+        const ca = channels(x);
+        const cb = channels(y);
+        for (let c = 0; c < 3; c++) expect(Math.abs(ca[c]! - cb[c]!), at).toBeLessThanOrEqual(12);
+      }
+    }
+  });
+
+  it('ramps the ambient colour through dusk blue to the night colour', () => {
+    const early = computeSkyProfile(19.5).ambient.color;
+    const late = computeSkyProfile(23).ambient.color;
+    expect(early).not.toBe(late);
+    expect(brightness(early)).toBeGreaterThan(brightness(late));
+  });
+
+  it('dims the hemisphere fill at night instead of holding its noon sky-blue', () => {
+    expect(computeSkyProfile(12).hemisphere.intensity).toBeCloseTo(0.37, 10);
+    expect(computeSkyProfile(12).hemisphere.sky).toBe(0xbfe5ff);
+    for (const hour of [21, 23, 0, 3]) {
+      expect(computeSkyProfile(hour).hemisphere.intensity, `hour ${hour}`).toBeLessThan(0.15);
+      expect(brightness(computeSkyProfile(hour).hemisphere.sky), `hour ${hour}`).toBeLessThan(brightness(0xbfe5ff) / 2);
+    }
+  });
+
+  it('overcasts the hemisphere with the weather', () => {
+    expect(computeSkyProfile(12, 'rain').hemisphere.intensity).toBeCloseTo(computeSkyProfile(12).hemisphere.intensity * 0.95, 10);
+    expect(computeSkyProfile(0, 'rain').hemisphere.intensity).toBeCloseTo(computeSkyProfile(0).hemisphere.intensity * 0.85, 10);
+  });
+
+  it('switches the lamps on through twilight and off by day', () => {
+    for (const hour of [7, 9, 12, 15, 17]) expect(computeSkyProfile(hour).lamps, `hour ${hour}`).toBe(0);
+    // They lead the sunset, for the room the low sun has already left.
+    for (const hour of [6, 17.5, 18, 18.5]) {
+      expect(computeSkyProfile(hour).lamps, `hour ${hour}`).toBeGreaterThan(0);
+      expect(computeSkyProfile(hour).lamps, `hour ${hour}`).toBeLessThan(1);
+    }
+    for (const hour of [20, 23, 0, 4]) expect(computeSkyProfile(hour).lamps, `hour ${hour}`).toBe(1);
+  });
+});
+
+describe('computeSkyProfile — daylight balance (#752)', () => {
+  const offWhite = (hex: number) => Math.max(...channels(hex).map((c) => 255 - c));
+
+  it('keeps the sun white at noon and warm at the sun events', () => {
+    expect(offWhite(computeSkyProfile(12).sun.color)).toBe(0);
+    for (const hour of [6, 18]) expect(offWhite(computeSkyProfile(hour).sun.color), `hour ${hour}`).toBeGreaterThan(80);
+    expect(offWhite(computeSkyProfile(9).sun.color)).toBeLessThan(offWhite(computeSkyProfile(7).sun.color));
+  });
+
+  it('lets the sun carry the day: more direct light than all the fill together', () => {
+    const noon = computeSkyProfile(12);
+    expect(noon.sun.intensity).toBeGreaterThan(noon.ambient.intensity + noon.hemisphere.intensity + noon.environment);
+  });
+
+  it('keeps the arc off the horizon, so dawn and dusk still throw shadows', () => {
+    for (const hour of [6, 18]) {
+      const [x, y, z] = computeSkyProfile(hour).sun.position;
+      expect(y / Math.hypot(x, y, z), `hour ${hour}`).toBeGreaterThan(0.25);
+    }
+  });
+
+  it('keeps the night darkest at midnight: the fill outlasts the sun past the moon\'s rise', () => {
+    const groundLight = (hour: number) => {
+      const { ambient, hemisphere, environment, sun } = computeSkyProfile(hour);
+      const [x, y, z] = sun.position;
+      const tint = (hex: number) => channels(hex).reduce((sum, c) => sum + c, 0) / 765;
+      return (
+        ambient.intensity * tint(ambient.color) +
+        hemisphere.intensity * tint(hemisphere.sky) +
+        environment * Math.PI +
+        ((sun.intensity * y) / Math.hypot(x, y, z)) * tint(sun.color)
+      );
+    };
+    for (const hour of [19, 19.5, 20, 4, 4.5, 5]) {
+      expect(groundLight(hour), `hour ${hour}`).toBeGreaterThan(groundLight(0));
+    }
+  });
+
+  it('scales the shadow lookup offset with the shadow texel, floored for small lots', () => {
+    expect(shadowNormalBias(20, 2048)).toBe(0.03);
+    expect(shadowNormalBias(120, 2048)).toBeCloseTo(0.146, 3);
+  });
+
+  it('hands the light to a cool moon after twilight, through darkness', () => {
+    expect(computeSkyProfile(19.5).sun.intensity).toBe(0);
+    expect(computeSkyProfile(4.5).sun.intensity).toBe(0);
+    for (const hour of [21, 22, 0, 3]) {
+      const { color, intensity, position } = computeSkyProfile(hour).sun;
+      const [r, , b] = channels(color);
+      expect(intensity, `hour ${hour}`).toBeGreaterThan(0.5);
+      expect(b, `hour ${hour}`).toBeGreaterThan(r!);
+      expect(position[2], `hour ${hour}`).toBeLessThan(0);
+    }
+    expect(computeSkyProfile(0).sun.intensity).toBeLessThan(computeSkyProfile(18).sun.intensity);
+  });
+});
+
+describe('night sky around the camera (#753)', () => {
+  it('draws centred on the camera, wherever it stands', () => {
+    const sky = new THREE.Object3D();
+    sky.position.set(1, 2, 3);
+    followCamera(sky);
+    const camera = new THREE.PerspectiveCamera();
+    camera.position.set(100, 50, -80);
+    sky.onBeforeRender(undefined as never, undefined as never, camera, undefined as never, undefined as never, undefined as never);
+    expect(new THREE.Vector3().setFromMatrixPosition(sky.matrixWorld).toArray()).toEqual([101, 52, -77]);
+    expect(sky.position.toArray()).toEqual([1, 2, 3]);
+  });
+});
+
+describe('lamp pool (#393)', () => {
+  function pointLights(scene: ThreeNS.Scene): { total: number; drawn: number } {
+    let total = 0;
+    let drawn = 0;
+    scene.traverse((obj) => {
+      if ((obj as ThreeNS.PointLight).isPointLight) total++;
+    });
+    scene.traverseVisible((obj) => {
+      if ((obj as ThreeNS.PointLight).isPointLight) drawn++;
+    });
+    return { total, drawn };
+  }
+
+  const lamps: LampLight[] = Array.from({ length: 30 }, (_, i) => ({ x: i, y: 1.35, z: 0, candela: 8, range: 7 }));
+  const FOCUS = { x: 0, y: 0, z: 0 };
+
+  it('keeps one fixed set of point lights across hours and lamp-set changes, drawn only at night', () => {
+    const scene = new THREE.Scene();
+    addLights(THREE, scene);
+    for (const hour of [6, 12, 17, 18.5, 20, 0, 4, 12]) {
+      for (const set of [[], lamps.slice(0, 3), lamps]) {
+        const level = computeSkyProfile(hour).lamps;
+        applyLampPool(scene, planLampPool(set, FOCUS, level));
+        const { total, drawn } = pointLights(scene);
+        expect(total, `hour ${hour}, ${set.length} lamps`).toBe(LAMP_POOL_SIZE);
+        expect(drawn, `hour ${hour}, ${set.length} lamps`).toBe(level > 0 && set.length > 0 ? LAMP_POOL_SIZE : 0);
+      }
+    }
+  });
+
+  it('lights the nearest lamps at night and nothing by day', () => {
+    const scene = new THREE.Scene();
+    addLights(THREE, scene);
+    applyLampPool(scene, planLampPool(lamps, { x: 10, y: 1, z: 0 }, 1));
+    const lit: number[] = [];
+    scene.traverse((obj) => {
+      const light = obj as ThreeNS.PointLight;
+      if (light.isPointLight && light.intensity > 0) lit.push(light.position.x);
+    });
+    expect(lit.sort((a, b) => a - b)).toEqual([6, 7, 8, 9, 10, 11, 12, 13]);
+    applyLampPool(scene, planLampPool(lamps, FOCUS, 0));
+    scene.traverse((obj) => {
+      if ((obj as ThreeNS.PointLight).isPointLight) expect((obj as ThreeNS.PointLight).intensity).toBe(0);
+    });
+  });
+
+  it('pre-warms the lit variant in the hours before dusk, leaving the pool hidden', () => {
+    expect([13, 14, 16, 17].map(isLampPrewarmHour)).toEqual([false, true, true, true]);
+    expect([12, 18, 19, 0, 5].some(isLampPrewarmHour)).toBe(false);
+    const scene = new THREE.Scene();
+    addLights(THREE, scene);
+    const seen: number[] = [];
+    const renderer = {
+      compile: (target: ThreeNS.Scene) => {
+        seen.push(pointLights(target).drawn);
+        return new Set();
+      },
+    } as unknown as ThreeNS.WebGLRenderer;
+    prewarmLampPool(renderer, scene, new THREE.PerspectiveCamera());
+    expect(seen).toEqual([LAMP_POOL_SIZE]);
+    expect(pointLights(scene).drawn).toBe(0);
+  });
+});
+
+describe('shadow quality (#760)', () => {
+  const lit = () => {
+    const scene = new THREE.Scene();
+    addLights(THREE as never, scene);
+    const sun = scene.children.find((obj) => (obj as ThreeNS.DirectionalLight).isDirectionalLight) as ThreeNS.DirectionalLight;
+    return { scene, sun };
+  };
+
+  it('resizes the map, frees the old one and keeps the bias in texels', () => {
+    const { scene, sun } = lit();
+    const freed = { dispose: vi.fn() };
+    sun.shadow.map = freed as never;
+    const bias = sun.shadow.normalBias;
+    expect(applyShadowQuality(scene, 512, 2)).toBe(true);
+    expect(sun.shadow.mapSize.width).toBe(512);
+    expect(sun.shadow.radius).toBe(2);
+    expect(freed.dispose).toHaveBeenCalledOnce();
+    expect(sun.shadow.map).toBeNull();
+    expect(sun.shadow.normalBias).toBeGreaterThan(bias);
+  });
+
+  it('leaves a matching map alone', () => {
+    const { scene, sun } = lit();
+    expect(applyShadowQuality(scene, sun.shadow.mapSize.width, sun.shadow.radius)).toBe(false);
+  });
+});
+
+describe('installEnvironment (#663)', () => {
+  const fakeTarget = () => {
+    const target = new THREE.WebGLRenderTarget(1, 1);
+    const dispose = vi.spyOn(target, 'dispose');
+    return { target, dispose };
+  };
+
+  it('bakes again on a context restore and lights the scene with the fresh bake', () => {
+    const scene = new THREE.Scene();
+    const bakes = [fakeTarget(), fakeTarget()];
+    let next = 0;
+    const environment = installEnvironment(scene, () => bakes[next++]!.target);
+    expect(scene.environment).toBe(bakes[0]!.target.texture);
+    environment.rebake();
+    expect(next).toBe(2);
+    expect(scene.environment).toBe(bakes[1]!.target.texture);
+    // The stale target's GL objects died with the context: nothing to delete.
+    expect(bakes[0]!.dispose).not.toHaveBeenCalled();
+    expect(bakes[1]!.dispose).not.toHaveBeenCalled();
+    environment.dispose();
+    expect(scene.environment).toBeNull();
+    expect(bakes[1]!.dispose).toHaveBeenCalledTimes(1);
+  });
+});
